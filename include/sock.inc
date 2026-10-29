@@ -26,7 +26,7 @@ dcl sock_close    entry (fixed bin(31))
 dcl sock_shutdown entry (fixed bin(31), fixed bin(31))
     returns (fixed bin(31)) external;
 
-dcl sock_bind     entry (fixed bin(31), char(*), fixed bin(31))
+dcl sock_bind     entry (fixed bin(31), char(*))
     returns (fixed bin(31)) external;
 
 dcl sock_listen   entry (fixed bin(31), fixed bin(31))
@@ -36,28 +36,26 @@ dcl sock_accept   entry (fixed bin(31))
     returns (fixed bin(31)) external;
 
 /*--- Connect / data transfer ---*/
-dcl sock_connect  entry (fixed bin(31), char(*), fixed bin(31))
+dcl sock_connect  entry (fixed bin(31), char(*))
     returns (fixed bin(31)) external;
 
-dcl sock_send     entry (fixed bin(31), char(*), fixed bin(31),
-    fixed bin(31))
+dcl sock_send     entry (fixed bin(31), char(*), fixed bin(31))
     returns (fixed bin(31)) external;
 
-dcl sock_recv     entry (fixed bin(31), char(*), fixed bin(31),
-    fixed bin(31))
+dcl sock_recv     entry (fixed bin(31), char(*), fixed bin(31))
     returns (fixed bin(31)) external;
 
 dcl sock_sendto   entry (fixed bin(31), char(*), fixed bin(31),
-    fixed bin(31), char(*), fixed bin(31))
+    char(*))
     returns (fixed bin(31)) external;
 
 dcl sock_recvfrom entry (fixed bin(31), char(*), fixed bin(31),
-    fixed bin(31), char(*), pointer)
+    char(*), pointer)
     returns (fixed bin(31)) external;
 
 /*--- Socket options ---*/
 dcl sock_setsockopt entry (fixed bin(31), fixed bin(31), fixed bin(31),
-    pointer, fixed bin(31))
+    char(*))
     returns (fixed bin(31)) external;
 
 dcl sock_getsockopt entry (fixed bin(31), fixed bin(31), fixed bin(31),
@@ -84,8 +82,7 @@ dcl sock_poll_multi entry (pointer, pointer, pointer,
     returns (fixed bin(31)) external;
 
 /*--- DNS ---*/
-dcl sock_getaddrinfo  entry (char(*), fixed bin(31), fixed bin(31),
-    char(*))
+dcl sock_getaddrinfo  entry (char(*), fixed bin(31), char(*))
     returns (fixed bin(31)) external;
 
 dcl sock_freeaddrinfo entry (pointer) external;

@@ -93,11 +93,10 @@ sock_shutdown: procedure (fd, how) returns (fixed bin(31));
     return (c_shutdown(fd, how));
 end sock_shutdown;
 
-sock_bind: procedure (fd, addr_buf, addrlen) returns (fixed bin(31));
+sock_bind: procedure (fd, addr_buf) returns (fixed bin(31));
     dcl fd fixed bin(31);
     dcl addr_buf char(*);
-    dcl addrlen fixed bin(31);
-    return (c_bind(fd, addr_buf, addrlen));
+    return (c_bind(fd, addr_buf, length(addr_buf)));
 end sock_bind;
 
 sock_listen: procedure (fd, backlog) returns (fixed bin(31));
@@ -116,63 +115,57 @@ end sock_accept;
 /* Connect / data transfer                                       */
 /*===============================================================*/
 
-sock_connect: procedure (fd, addr_buf, addrlen) returns (fixed bin(31));
+sock_connect: procedure (fd, addr_buf) returns (fixed bin(31));
     dcl fd fixed bin(31);
     dcl addr_buf char(*);
-    dcl addrlen fixed bin(31);
-    return (c_connect(fd, addr_buf, addrlen));
+    return (c_connect(fd, addr_buf, length(addr_buf)));
 end sock_connect;
 
-sock_send: procedure (fd, buf, len, flags) returns (fixed bin(31));
+sock_send: procedure (fd, buf, flags) returns (fixed bin(31));
     dcl fd fixed bin(31);
     dcl buf char(*);
-    dcl len fixed bin(31);
     dcl flags fixed bin(31);
-    return (c_send(fd, buf, len, flags));
+    return (c_send(fd, buf, length(buf), flags));
 end sock_send;
 
-sock_recv: procedure (fd, buf, len, flags) returns (fixed bin(31));
+sock_recv: procedure (fd, buf, flags) returns (fixed bin(31));
     dcl fd fixed bin(31);
     dcl buf char(*);
-    dcl len fixed bin(31);
     dcl flags fixed bin(31);
-    return (c_recv(fd, buf, len, flags));
+    return (c_recv(fd, buf, length(buf), flags));
 end sock_recv;
 
-sock_sendto: procedure (fd, buf, len, flags, addr_buf, addrlen)
+sock_sendto: procedure (fd, buf, flags, addr_buf)
     returns (fixed bin(31));
     dcl fd fixed bin(31);
     dcl buf char(*);
-    dcl len fixed bin(31);
     dcl flags fixed bin(31);
     dcl addr_buf char(*);
-    dcl addrlen fixed bin(31);
-    return (c_sendto(fd, buf, len, flags, addr_buf, addrlen));
+    return (c_sendto(fd, buf, length(buf), flags,
+                     addr_buf, length(addr_buf)));
 end sock_sendto;
 
-sock_recvfrom: procedure (fd, buf, len, flags, addr_buf, addrlen_ptr)
+sock_recvfrom: procedure (fd, buf, flags, addr_buf, addrlen_ptr)
     returns (fixed bin(31));
     dcl fd fixed bin(31);
     dcl buf char(*);
-    dcl len fixed bin(31);
     dcl flags fixed bin(31);
     dcl addr_buf char(*);
     dcl addrlen_ptr pointer;
-    return (c_recvfrom(fd, buf, len, flags, addr_buf, addrlen_ptr));
+    return (c_recvfrom(fd, buf, length(buf), flags, addr_buf, addrlen_ptr));
 end sock_recvfrom;
 
 /*===============================================================*/
 /* Socket options                                                */
 /*===============================================================*/
 
-sock_setsockopt: procedure (fd, level, optname, value_ptr, optlen)
+sock_setsockopt: procedure (fd, level, optname, value_ptr)
     returns (fixed bin(31));
     dcl fd fixed bin(31);
     dcl level fixed bin(31);
     dcl optname fixed bin(31);
-    dcl value_ptr pointer;
-    dcl optlen fixed bin(31);
-    return (c_setsockopt(fd, level, optname, value_ptr, optlen));
+    dcl value_ptr char(*);
+    return (c_setsockopt(fd, level, optname, addr(value_ptr), length(value_ptr)));
 end sock_setsockopt;
 
 sock_getsockopt: procedure (fd, level, optname, value_ptr, optlen_ptr)
@@ -337,10 +330,9 @@ end sock_poll_multi;
 /* DNS - getaddrinfo                                             */
 /*===============================================================*/
 
-sock_getaddrinfo: procedure (host, hostlen, port, addr_buf)
+sock_getaddrinfo: procedure (host, port, addr_buf)
     returns (fixed bin(31));
     dcl host char(*);
-    dcl hostlen fixed bin(31);
     dcl port fixed bin(31);
     dcl addr_buf char(*);
     dcl host_buf char(HOST_BUF_SIZE);
@@ -376,8 +368,7 @@ sock_getaddrinfo: procedure (host, hostlen, port, addr_buf)
 
     /* NUL-terminate host into a buffer (libc getaddrinfo needs C string). */
     host_buf = low(HOST_BUF_SIZE);
-    n = hostlen;
-    if n < 0 then n = 0;
+    n = length(host);
     if n > NET_HOST_MAX then n = NET_HOST_MAX;
     do i = 1 to n;
         substr(host_buf, i, 1) = substr(host, i, 1);
