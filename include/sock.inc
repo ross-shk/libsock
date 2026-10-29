@@ -17,72 +17,207 @@
 %include c_bridge;
 
 /*--- Socket lifecycle ---*/
-dcl sock_socket   entry (fixed bin(31), fixed bin(31), fixed bin(31))
-    returns (fixed bin(31)) external;
 
-dcl sock_close    entry (fixed bin(31))
-    returns (fixed bin(31)) external;
+/* Create a socket.  Wraps libc socket(2).
+ * Returns a non-negative file descriptor on success, or -1 on failure
+ * (check errno). */
+ dcl sock_socket entry (
+     fixed bin(31),  /* address family (AF_INET, AF_INET6, ...)       */
+     fixed bin(31),  /* socket type (SOCK_STREAM, SOCK_DGRAM, ...)    */
+     fixed bin(31)   /* protocol (IPPROTO_TCP, IPPROTO_UDP, or 0)     */
+ )  returns (fixed bin(31)) external;
 
-dcl sock_shutdown entry (fixed bin(31), fixed bin(31))
-    returns (fixed bin(31)) external;
+/* Close a file descriptor.  Wraps libc close(2).
+ * Returns 0 on success, or -1 on failure (check errno). */
+ dcl sock_close entry (
+     fixed bin(31)   /* socket file descriptor to close */
+ )  returns (fixed bin(31)) external;
 
-dcl sock_bind     entry (fixed bin(31), char(*))
-    returns (fixed bin(31)) external;
+/* Shut down part of a socket.  Wraps libc shutdown(2).
+ * Returns 0 on success, or -1 on failure (check errno). */
+ dcl sock_shutdown entry (
+     fixed bin(31),  /* file descriptor of the socket to shut down   */
+     fixed bin(31)   /* shutdown direction: SHUT_RD, SHUT_WR etc     */
+ )  returns (fixed bin(31)) external;
 
-dcl sock_listen   entry (fixed bin(31), fixed bin(31))
-    returns (fixed bin(31)) external;
+/* Bind a socket to an address.  Wraps libc bind(2).
+ * The PL/I length of addr_buf is passed as the sockaddr length arg.
+ * Returns 0 on success, or -1 on failure (check errno). */
+ dcl sock_bind entry (
+     fixed bin(31),  /* socket file descriptor to bind          */
+     char(*)         /* buffer containing a struct sockaddr_in  */
+ )  returns (fixed bin(31)) external;
 
-dcl sock_accept   entry (fixed bin(31))
-    returns (fixed bin(31)) external;
+/* Mark a socket as passive (ready to accept connections).
+ * Wraps libc listen(2).  Returns 0 on success, or -1 on failure
+ * (check errno). */
+ dcl sock_listen entry (
+     fixed bin(31),  /* listening socket file descriptor    */
+     fixed bin(31)   /* max pending-connection queue length */
+ )  returns (fixed bin(31)) external;
+
+/* Accept a pending connection on a listening socket.
+ * Wraps libc accept(2) with NULL sockaddr and addrlen, so the peer
+ * address is not returned to the caller.  Blocks until a connection
+ * arrives.  Returns a new file descriptor on success, or -1 on failure
+ * (check errno). */
+ dcl sock_accept entry (
+     fixed bin(31)   /* file descriptor of the listening socket */
+ )  returns (fixed bin(31)) external;
 
 /*--- Connect / data transfer ---*/
-dcl sock_connect  entry (fixed bin(31), char(*))
-    returns (fixed bin(31)) external;
 
-dcl sock_send     entry (fixed bin(31), char(*), fixed bin(31))
-    returns (fixed bin(31)) external;
+/* Initiate a connection on a socket.  Wraps libc connect(2).
+ * The PL/I length of addr_buf is passed as the sockaddr length argument.
+ * Returns 0 on success, or for non-blocking sockets -1 with errno
+ * EINPROGRESS; on failure -1 (check errno). */
+ dcl sock_connect entry (
+     fixed bin(31),  /* socket file descriptor to connect     */
+     char(*)         /* buffer containing sockaddr_in of peer */
+ )  returns (fixed bin(31)) external;
 
-dcl sock_recv     entry (fixed bin(31), char(*), fixed bin(31))
-    returns (fixed bin(31)) external;
+/* Send data on a connected socket.  Wraps libc send(2).
+ * The PL/I length of buf is the byte count.  Returns the number of
+ * bytes sent (>= 0), or -1 on failure (check errno); a short count
+ * (< length(buf)) is possible. */
+dcl sock_send entry (
+    fixed bin(31),  /* connected socket file descriptor              */
+    char(*),        /* buffer holding data to send                   */
+    fixed bin(31)   /* bitwise-OR of send flags (e.g. MSG_DONTWAIT)  */
+)  returns (fixed bin(31)) external;
 
-dcl sock_sendto   entry (fixed bin(31), char(*), fixed bin(31),
-    char(*))
-    returns (fixed bin(31)) external;
+/* Receive data on a connected socket.  Wraps libc recv(2).
+ * The PL/I length of buf is the maximum byte count.  Returns the number
+ * of bytes received (>= 0; 0 means peer closed), or -1 on failure
+ * (check errno); a short count is possible. */
+ dcl sock_recv entry (
+     fixed bin(31),  /* connected socket file descriptor             */
+     char(*),        /* buffer to receive data into                  */
+     fixed bin(31)   /* bitwise-OR of recv flags (e.g. MSG_DONTWAIT) */
+ )  returns (fixed bin(31)) external;
 
-dcl sock_recvfrom entry (fixed bin(31), char(*), fixed bin(31),
-    char(*), pointer)
-    returns (fixed bin(31)) external;
+/* Send data to a specific peer address.  Wraps libc sendto(2).
+ * The PL/I lengths of buf and addr_buf are the byte and sockaddr
+ * lengths respectively.  Returns bytes sent (>= 0), or -1 on failure
+ * (check errno). */
+dcl sock_sendto entry (
+    fixed bin(31),  /* socket fd (may be unconnected for datagrams)  */
+    char(*),        /* buffer holding data to send                   */
+    fixed bin(31),  /* bitwise-OR of send flags (e.g. MSG_DONTWAIT)  */
+    char(*)         /* buffer with sockaddr_in of the peer           */
+)  returns (fixed bin(31)) external;
+
+/* Receive data and store the sender's address.  Wraps libc recvfrom(2).
+ * The PL/I length of buf is the max byte count; the PL/I length of
+ * addr_buf is passed as the sockaddr length.  Returns bytes received
+ * (>= 0; 0 = peer closed), or -1 on failure (check errno). */
+ dcl sock_recvfrom entry (
+     fixed bin(31),  /* receiving socket file descriptor              */
+     char(*),        /* buffer to receive data into                   */
+     fixed bin(31),  /* bitwise-OR of recv flags (e.g. MSG_DONTWAIT)  */
+     char(*),        /* buffer to receive sender's sockaddr_in        */
+     pointer         /* ptr to fixed bin(31) receiving actual len     */
+ )  returns (fixed bin(31)) external;
 
 /*--- Socket options ---*/
-dcl sock_setsockopt entry (fixed bin(31), fixed bin(31), fixed bin(31),
-    char(*))
-    returns (fixed bin(31)) external;
 
-dcl sock_getsockopt entry (fixed bin(31), fixed bin(31), fixed bin(31),
-    pointer, pointer)
-    returns (fixed bin(31)) external;
+/* Set a socket option.  Wraps libc setsockopt(2).
+ * The address of value_ptr's first byte and the PL/I length of
+ * value_ptr are passed as the optval pointer and optlen.  Returns 0
+ * on success, or -1 on failure (check errno). */
+ dcl sock_setsockopt entry (
+     fixed bin(31),  /* socket file descriptor                       */
+     fixed bin(31),  /* option level (e.g. SOL_SOCKET, IPPROTO_TCP)  */
+     fixed bin(31),  /* option name                                  */
+     char(*)         /* buffer holding the option value              */
+ )  returns (fixed bin(31)) external;
+
+/* Get a socket option.  Wraps libc getsockopt(2).
+ * value_ptr receives the option value; optlen_ptr must point to a
+ * fixed bin(31) giving the buffer size on input and receiving the
+ * actual length on output.  Returns 0 on success, or -1 on failure
+ * (check errno). */
+dcl sock_getsockopt entry (
+    fixed bin(31),  /* socket file descriptor                          */
+    fixed bin(31),  /* option level (e.g. SOL_SOCKET, IPPROTO_TCP)     */
+    fixed bin(31),  /* option name                                    */
+    pointer,        /* ptr to buffer that receives the option value   */
+    pointer         /* ptr to fixed bin(31) for size on input, len out */
+)  returns (fixed bin(31)) external;
 
 /*--- Address queries ---*/
-dcl sock_getpeername entry (fixed bin(31), char(*), pointer)
-    returns (fixed bin(31)) external;
 
-dcl sock_getsockname entry (fixed bin(31), char(*), pointer)
-    returns (fixed bin(31)) external;
+/* Get the peer address of a connected socket.  Wraps libc
+ * getpeername(2).  Returns 0 on success, or -1 on failure (check errno). */
+dcl sock_getpeername entry (
+    fixed bin(31),  /* socket file descriptor                          */
+    char(*),        /* buffer to receive peer's struct sockaddr_in     */
+    pointer         /* ptr to fixed bin(31) receiving actual addr len  */
+)  returns (fixed bin(31)) external;
+
+/* Get the local address of a socket.  Wraps libc getsockname(2).
+ * Returns 0 on success, or -1 on failure (check errno). */
+dcl sock_getsockname entry (
+    fixed bin(31),  /* socket file descriptor                          */
+    char(*),        /* buffer to receive local struct sockaddr_in      */
+    pointer         /* ptr to fixed bin(31) receiving actual addr len  */
+)  returns (fixed bin(31)) external;
 
 /*--- Nonblocking I/O ---*/
-dcl sock_setnonblock entry (fixed bin(31), fixed bin(31))
-    returns (fixed bin(31)) external;
+
+/* Set or clear nonblocking mode on a file descriptor.
+ * Uses fcntl(F_GETFL) to read current flags, bitwise OR/ANDs the
+ * O_NONBLOCK bit, then fcntl(F_SETFL) to write them back.  Returns 0
+ * on success, or -1 on failure (check errno). */
+dcl sock_setnonblock entry (
+    fixed bin(31),  /* file descriptor to modify                      */
+    fixed bin(31)   /* non-zero enables nonblocking, zero disables    */
+)  returns (fixed bin(31)) external;
 
 /*--- poll(2) ---*/
-dcl sock_poll       entry (fixed bin(31), fixed bin(31), fixed bin(31))
-    returns (fixed bin(31)) external;
 
-dcl sock_poll_multi entry (pointer, pointer, pointer,
-    fixed bin(31), fixed bin(31))
-    returns (fixed bin(31)) external;
+/* Poll a single socket for readiness.
+ * Translates the libnet event mask (POLLIN=1, POLLOUT=2) to libc
+ * poll(2) bits (C_POLLIN, C_POLLOUT), calls poll(2) with nfds=1.
+ * Revents are not translated for this variant.  Returns the count of
+ * ready descriptors (0 = timed out), or -1 on failure (check errno). */
+dcl sock_poll entry (
+    fixed bin(31),  /* file descriptor to poll                         */
+    fixed bin(31),  /* desired events: POLLIN and/or POLLOUT          */
+    fixed bin(31)   /* timeout in ms (-1 = block, 0 = return immediately) */
+)  returns (fixed bin(31)) external;
+
+/* Poll multiple file descriptors for readiness.
+ * Builds an array of struct pollfd from the caller-supplied fd and
+ * event arrays, then calls libc poll(2).  Libnet event masks are
+ * translated to libc poll bits for input, and libc revents are
+ * translated back to libnet masks for output.  Returns the count of
+ * ready descriptors (0 = timed out), or -1 on failure (check errno). */
+dcl sock_poll_multi entry (
+    pointer,        /* ptr to array of fixed bin(31) file descriptors  */
+    pointer,        /* ptr to array of fixed bin(31) event masks       */
+    pointer,        /* ptr to array of fixed bin(31) revent masks (out) */
+    fixed bin(31),  /* number of descriptors to poll                    */
+    fixed bin(31)   /* timeout in ms: -1 = block, 0 = immediate         */
+)  returns (fixed bin(31)) external;
 
 /*--- DNS ---*/
-dcl sock_getaddrinfo  entry (char(*), fixed bin(31), char(*))
-    returns (fixed bin(31)) external;
 
-dcl sock_freeaddrinfo entry (pointer) external;
+/* Resolve a host name and inject a port, returning a raw sockaddr_in.
+ * Wraps libc getaddrinfo(2): sets hints to AF_INET / SOCK_STREAM,
+ * resolves the host, copies the first result's sockaddr_in to addr_buf,
+ * overwrites sin_port with the requested port (network byte order),
+ * then frees the addrinfo list.  EAI_* error codes are translated to
+ * errno.  Returns 0 on success, or -1 on failure (check errno, which
+ * may be ENOMEM, ENOENT, or EINVAL). */
+ dcl sock_getaddrinfo entry (
+     char(*),        /* host name to resolve                          */
+     fixed bin(31),  /* port number (host byte order)                 */
+     char(*)         /* 16-byte buffer receiving resolved sockaddr_in */
+ )  returns (fixed bin(31)) external;
+
+/* Free a linked list of addrinfo structures returned by getaddrinfo.
+ * Wraps libc freeaddrinfo(2). */
+ dcl sock_freeaddrinfo entry (
+     pointer         /* pointer to the addrinfo list to free */
+ ) external;
