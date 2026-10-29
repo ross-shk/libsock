@@ -27,13 +27,6 @@ cmake --build build
 cmake --install build --prefix /usr/local
 ```
 
-Then build libnet:
-
-```bash
-cmake -S /path/to/libnet -B build -DLIBSOCK_ROOT=/usr/local
-cmake --build build
-```
-
 ## Architecture
 
 - **C bridge** (`source/c_bridge.c`): the ONLY C — thin syscall wrappers
