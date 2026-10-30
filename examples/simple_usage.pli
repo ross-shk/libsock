@@ -1,63 +1,66 @@
- /* simple_usage.pli - fetch using raw sock_* calls. */
- /* */
- /* Module:    simple_usage */
- /* Purpose:   Connect to example.com:80, send GET /, */
- /*            read the reply with sock_recv. */
- /* Usage:     pli examples/simple_usage.pli -I include -o build/
-            examples/simple_usage -L build -lsock
-            -Wl,-undefined -Wl,dynamic_lookup */
+ /* simple_usage.pli - fetch using raw sock_* calls. 
+  * 
+  * Module:    simple_usage 
+  * Purpose:   Connect to example.com:80, send GET /, 
+  *            read the reply with sock_recv. 
+  * Usage:     pli examples/simple_usage.pli -lsock -o simple_usage  
+  */
 
-usage: proc options(main);
-%include sock;
+ usage: proc options(main);
+ %include sock;
 
-   dcl fd            fixed bin(31);
-   dcl addr          char(16);
-   dcl req           char(64);
-   dcl buf           char(4096);
-   dcl (sent, n, total) fixed bin(31);
+   declare 
+     fd               fixed bin(31),
+     url              char(16),
+     request          char(64),
+     response         char(4096),
+     (sent, n, total) fixed bin(31);
 
    /* Resolve example.com:80 into a 16-byte sockaddr_in. */
-   if sock_getaddrinfo('example.com', 80, addr) ^= 0 then do;
-      put skip list('getaddrinfo failed, errno=', errno);
-      stop;
+   if sock_getaddrinfo('example.com', 80, url) ^= 0 then do;
+     put skip list('getaddrinfo failed, errno=', errno);
+     stop;
    end;
 
    /* Create a stream socket. */
    fd = sock_socket(AF_INET, SOCK_STREAM, 0);
    if fd < 0 then do;
-      put skip list('socket failed, errno=', errno);
-      stop;
+     put skip list('socket failed, errno=', errno);
+     stop;
    end;
 
    /* Connect to the resolved address. */
-   if sock_connect(fd, addr) ^= 0 then do;
-      put skip list('connect failed, errno=', errno);
-      call sock_close(fd);
-      stop;
+   if sock_connect(fd, url) ^= 0 then do;
+     put skip list('connect failed, errno=', errno);
+     call sock_close(fd);
+     stop;
    end;
 
    /* Send HTTP/1.0 GET request with close. */
-   req = 'GET / HTTP/1.0' || '0D0A'x || 'Host: example.com'
-      || '0D0A'x || 'Connection: close' || '0D0A'x
-      || '0D0A'x;
-   sent = sock_send(fd, req, 0);
+   request = 'GET / HTTP/1.0' || '0D0A'x || 'Host: example.com'
+       || '0D0A'x || 'Connection: close' || '0D0A'x || '0D0A'x;
+   sent = sock_send(fd, request, 0);
    put skip list('sent', sent, 'request bytes');
 
    /* Read the response in chunks until the peer closes. */
    total = 0;
-   do while (1 = 1);
-      n = sock_recv(fd, buf, 0);
-      if n < 0 then do;
-         put skip list('recv failed, errno=', errno);
-         stop;
-      end;
-      if n = 0 then leave;
-      total = total + n;
-      put skip list(substr(buf, 1, n));
+   do while ('1'b);
+     n = sock_recv(fd, response, 0);
+
+     if n < 0 then do;
+       put skip list('recv failed, errno=', errno);
+       stop;
+     end;
+     if n = 0 then leave;
+
+     total = total + n;
+
+     put skip list(substr(response, 1, n));
    end;
 
    /* Close and report. */
    call sock_close(fd);
+
    put skip list('fetched', total, 'bytes from example.com');
    put skip list('done');
-end;
+ end;
