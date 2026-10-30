@@ -17,11 +17,11 @@
  * responsibility of the net layer (source/net.pli).
  */
 
-sock: package exports(sock_socket, sock_close, sock_shutdown, sock_bind,
-    sock_listen, sock_accept, sock_connect, sock_send, sock_recv,
-    sock_sendto, sock_recvfrom, sock_setsockopt, sock_getsockopt,
-    sock_getpeername, sock_getsockname, sock_setnonblock, sock_poll,
-    sock_poll_multi, sock_getaddrinfo, sock_freeaddrinfo);
+ sock: package exports(new_socket, sock_close, sock_shutdown, sock_bind,
+     sock_listen, sock_accept, sock_connect, sock_send, sock_recv,
+     sock_sendto, sock_recvfrom, sock_setsockopt, sock_getsockopt,
+     sock_getpeername, sock_getsockname, sock_setnonblock, sock_poll,
+     sock_poll_multi, sock_getaddrinfo, sock_freeaddrinfo);
 
 /*--- struct sizes ---*/
 %replace ADDRINFO_SIZE by 48;  /* struct addrinfo size, macOS arm64 */
@@ -75,17 +75,17 @@ dcl 1 sockaddr_hdr based(phdr) unaligned,
 /* Socket lifecycle (thin pass-throughs to libc)                 */
 /*===============================================================*/
 
-sock_socket: procedure (family, type, proto) returns (fixed bin(31));
+ new_socket: procedure (family, type, proto) returns (fixed bin(31));
     dcl family fixed bin(31);
     dcl type   fixed bin(31);
     dcl proto  fixed bin(31);
     return (c_socket(family, type, proto));
-end sock_socket;
+ end new_socket;
 
-sock_close: procedure (fd) returns (fixed bin(31));
-    dcl fd fixed bin(31);
-    return (c_close(fd));
-end sock_close;
+ sock_close: procedure (fd) returns (fixed bin(31));
+   dcl fd fixed bin(31);
+   return (c_close(fd));
+ end sock_close;
 
 sock_shutdown: procedure (fd, how) returns (fixed bin(31));
     dcl fd fixed bin(31);

@@ -23,7 +23,7 @@
    end;
 
    /* Create a stream socket. */
-   fd = sock_socket(AF_INET, SOCK_STREAM, 0);
+   fd = new_socket(AF_INET, SOCK_STREAM, 0);
    if fd < 0 then do;
      put skip list('socket failed, errno=', errno);
      stop;

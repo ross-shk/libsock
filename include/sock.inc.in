@@ -23,7 +23,7 @@
  /* Create a socket.  Wraps libc socket(2).
   * Returns a non-negative file descriptor on success, or -1 on failure
   * (check errno). */
- dcl sock_socket entry (
+ dcl new_socket entry (
      fixed bin(31),  /* address family (AF_INET, AF_INET6, ...)       */
      fixed bin(31),  /* socket type (SOCK_STREAM, SOCK_DGRAM, ...)    */
      fixed bin(31)   /* protocol (IPPROTO_TCP, IPPROTO_UDP, or 0)     */
