@@ -25,9 +25,6 @@
   *     32-bit value is read correctly.
   */
 
- /* --- C error number (thread-local in libc; shim on Windows) --- */
- dcl errno fixed bin(31) external;
-
  /* --- fcntl constants (for c_fcntl / sock_setnonblock) ---
   * Values are macOS; Linux noted. */
  %replace F_GETFL    by  3;  /* macOS; Linux: 3 */

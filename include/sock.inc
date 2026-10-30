@@ -12,12 +12,8 @@
   *
   * This include transitively pulls in c_bridge.inc so callers
   * (e.g. net.pli) get the errno variable and c_bridge constants;
-  * net.pli can therefore replace %include c_bridge with %include sock.
-  */
+  * net.pli can therefore replace  */
 
- %include c_bridge;
- %include type_defs;
- %include errno;
 
  /*--- Socket lifecycle ---*/
 
@@ -225,3 +221,135 @@
  dcl sock_freeaddrinfo entry (
      pointer         /* pointer to the addrinfo list to free */
  ) external;
+ /* type_defs.inc - libnet shared types and constants.
+  *
+  * Module:  type_defs
+  * Purpose: socket-domain constants, libnet status codes, and buffer
+  *          capacities, shared by the C bridge declarations and the
+  *          PL/I client/server libraries.
+  *
+  * The connection object is owned by the library (per-handle BASED
+  * storage); callers hold only a POINTER handle. The structure layout
+  * is private to the library and is declared in
+  * source/net.pli, not here.
+  */
+
+ /* --- address family / socket type / protocol (POSIX) --------- */
+ /* IPv4 only: address strings are 16-byte dotted quads. AF_INET6 */
+ /* is reserved for a future revision with wider buffers.         */
+ %replace AF_INET      by  2;
+ %replace AF_INET6     by 30;  /* macOS; Linux: 10 */
+ %replace SOCK_STREAM  by  1;
+ %replace SOCK_DGRAM   by  2;
+ %replace IPPROTO_TCP  by  6;
+ %replace IPPROTO_UDP  by 17;
+
+ /* --- C error number (thread-local in libc; shim on Windows) ---
+  * Declared here so callers that include type_defs (directly or via
+  * sock.inc) can read errno without pulling in c_bridge.inc. */
+ dcl errno fixed bin(31) external;
+
+ /* --- shutdown(2) directions ---------------------------------- */
+ %replace SHUT_RD      by 0;
+ %replace SHUT_WR      by 1;
+ %replace SHUT_RDWR    by 2;
+
+ /* --- poll(2) event bits: libnet mask, mapped onto POLLIN/    */
+ /* --- POLLOUT by the C bridge (platform POLLOUT is 4, not 2) --- */
+ %replace POLLIN       by 1;
+ %replace POLLOUT      by 2;
+
+ /* --- condition oncode sentinels (set via SIGNAL ... SET ONCODE)
+  * -------------------------------------------------------------- */
+ /* These are the oncode values carried by the net_timeout / net_eof
+  * / net_overflow conditions. POSIX errno (always positive) is
+  * carried by the net_error condition. They are NOT return codes:
+  * libnet reports all failures through conditions. */
+ %replace NET_ERR_EOF       by -2;   /* peer closed / end of stream  */
+ %replace NET_ERR_TIMEOUT   by -3;   /* read/write timeout or EAGAIN */
+ %replace NET_ERR_OVERFLOW  by -4;   /* caller buffer exhausted      */
+
+ /* --- raw socket option levels (platform-specific; macOS shown) ---
+  * On Linux, SOL_SOCKET = 1. The PL/I layer passes these directly to
+  * the raw sock_setsockopt / sock_getsockopt wrappers.
+  * ---------------------------------------------------------------- */
+ %replace SOL_SOCKET     by 65535;  /* macOS; Linux: 1          */
+ %replace SO_REUSEADDR   by     4;  /* macOS; Linux: 2          */
+ %replace SO_KEEPALIVE   by     8;
+ %replace SO_LINGER      by   128;
+ %replace SO_RCVTIMEO    by  4102;  /* macOS; Linux: 20         */
+ %replace SO_SNDTIMEO    by  4101;  /* macOS; Linux: 21         */
+ %replace SO_ERROR       by  4103;  /* macOS; Linux: 4          */
+
+ %replace TCP_NODELAY    by     1;  /* portable                 */
+
+ /* --- struct sizes (for raw buffer operations) ------------------- */
+ %replace SOCKADDR_IN_SIZE  by 16;   /* sizeof(struct sockaddr_in) */
+ %replace LINGER_SIZE       by  8;   /* sizeof(struct linger)       */
+ %replace TIMEVAL_SIZE      by 16;   /* sizeof(struct timeval)      */
+
+ /* --- legacy net_setopt codes (still used by the public API) ---
+  * PL/I maps NETOPT_* to (SOL_SOCKET, SO_*) via map_opt.
+  * ---------------------------------------------------------------- */
+ %replace NETOPT_REUSEADDR by 0;   /* SO_REUSEADDR */
+ %replace NETOPT_KEEPALIVE  by 1;  /* SO_KEEPALIVE */
+ %replace NETOPT_NODELAY    by 2;  /* TCP_NODELAY  */
+
+ /* --- send/recv flag: nonblocking ------------------------------ */
+ %replace MSG_DONTWAIT  by 128;    /* macOS; Linux: 64 */
+
+ /* --- default buffer capacities -------------------------------- */
+ %replace NET_BUF_CAP   by 4096;
+ %replace NET_HOST_MAX  by 256;
+
+ /* --- server connection pool ------------------------------------ */
+ %replace NET_MAX_CLIENTS by 1024;
+ /* errno.inc - POSIX errno constants as %replace. Named constants keep
+  * libnet's error handling readable and match the values returned
+  * by the C bridge's cached errno.
+  *
+  * Values are macOS (arm64); Linux values are noted for portability.
+  * Only the subset relevant to sockets is defined here; add more
+  * as needed.
+  */
+
+ %replace EPERM        by   1;  /* Operation not permitted        */
+ %replace ENOENT       by   2;  /* No such file or directory      */
+ %replace EINTR        by   4;  /* Interrupted system call        */
+ %replace EBADF        by   9;  /* Bad file descriptor            */
+ %replace ECHILD       by  10;  /* No child processes             */
+ %replace EAGAIN       by  35;  /* Try again (Linux: 11)          */
+ %replace ENOMEM       by  12;  /* Out of memory                  */
+ %replace EACCES       by  13;  /* Permission denied              */
+ %replace EFAULT       by  14;  /* Bad address                    */
+ %replace EINVAL       by  22;  /* Invalid argument               */
+ %replace EPIPE        by  32;  /* Broken pipe                    */
+ %replace EMFILE       by  24;  /* Too many open files            */
+ %replace ENOTSOCK     by  38;  /* Socket operation on non-socket */
+ %replace EMSGSIZE     by  40;  /* Message too long               */
+ %replace EADDRINUSE   by  48;  /* Address already in use         */
+ %replace EADDRNOTAVAIL by  49; /* Cannot assign requested address */
+ %replace ENETUNREACH  by  51;  /* Network is unreachable         */
+ %replace ECONNRESET   by  54;  /* Connection reset by peer       */
+ %replace ENOBUFS      by  55;  /* No buffer space available      */
+ %replace ENOTCONN     by  57;  /* Transport endpoint not conn.   */
+ %replace ETIMEDOUT    by  60;  /* Connection timed out           */
+ %replace ECONNREFUSED by  61;  /* Connection refused             */
+ %replace EHOSTDOWN    by  64;  /* Host is down                   */
+ %replace EHOSTUNREACH by  65;  /* No route to host               */
+ %replace EINPROGRESS  by  36;  /* Operation now in progress      */
+
+ /*--- getaddrinfo(2) error codes (EAI_*) ---
+  * Returned by libc getaddrinfo (POSIX) and Winsock getaddrinfo;
+  * not errno values.  sock_getaddrinfo maps them to errno.
+  * Values are macOS (arm64); Linux values are noted.                */
+ %replace EAI_BADFLAGS   by  3; /* macOS; Linux: 1   */
+ %replace EAI_AGAIN      by  2; /* macOS; Linux: 2   */
+ %replace EAI_FAIL        by  4; /* macOS; Linux: 4   */
+ %replace EAI_FAMILY      by  5; /* macOS; Linux: 5   */
+ %replace EAI_MEMORY      by  6; /* macOS; Linux: 6   */
+ %replace EAI_NONAME      by  8; /* macOS; Linux: 8   */
+ %replace EAI_SERVICE     by  9; /* macOS; Linux: 10  */
+ %replace EAI_SOCKTYPE    by 10; /* macOS; Linux: 11  */
+ %replace EAI_SYSTEM      by 11; /* macOS; Linux: 11  */
+ %replace EAI_OVERFLOW    by 14; /* macOS; Linux: 14  */

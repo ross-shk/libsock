@@ -3,7 +3,9 @@
 # Layout:
 #   lib sock        <- source/c_bridge.c [+ compiled source/sock.pli if the PL/I
 #                      compiler is available]  (static lib, installed with headers)
-#   dist/sock.inc   <- include/{sock,c_bridge,errno,type_defs}.inc minus %include lines
+#   include/sock.inc<- cmake-formed self-contained installable interface
+#                      (sock_* declarations + c_bridge/type_defs/errno inlined,
+#                       no %include dependencies)
 #
 # The PL/I module is optional: pli-llvm's `pli` compiler is usually absent on
 # Windows, so when it is not found the C bridge still builds. Point CMake at the
@@ -65,7 +67,6 @@ endif()
 
 set(LIBSOCK_PLI_INCLUDES
   "${CMAKE_CURRENT_SOURCE_DIR}/include/c_bridge.inc"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/sock.inc"
   "${CMAKE_CURRENT_SOURCE_DIR}/include/type_defs.inc"
   "${CMAKE_CURRENT_SOURCE_DIR}/include/errno.inc")
 
@@ -92,36 +93,38 @@ else()
   message(STATUS "libsock: PL/I compiler not found, building C bridge only (PL/I module skipped)")
 endif()
 
-# ------------------------------------------------------------ dist/sock.inc
-set(LIBSOCK_DIST_INC "${CMAKE_CURRENT_BINARY_DIR}/dist/sock.inc")
+# ------------------------------------------------------------ include/sock.inc (cmake-formed)
+# Self-contained external interface: sock_* declarations with the
+# c_bridge/type_defs/errno contents inlined and %include lines stripped,
+# so the include/sock.inc dropped into the project tree needs no sibling
+# include files and can be installed to /usr/include standalone.
+set(LIBSOCK_INC_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/include/sock.inc.in")
+set(LIBSOCK_INC "${CMAKE_CURRENT_SOURCE_DIR}/include/sock.inc")
 add_custom_command(
-  OUTPUT "${LIBSOCK_DIST_INC}"
+  OUTPUT "${LIBSOCK_INC}"
   COMMAND "${CMAKE_COMMAND}"
-    "-DINC_FILES=${CMAKE_CURRENT_SOURCE_DIR}/include/sock.inc$<SEMICOLON>${CMAKE_CURRENT_SOURCE_DIR}/include/c_bridge.inc$<SEMICOLON>${CMAKE_CURRENT_SOURCE_DIR}/include/errno.inc$<SEMICOLON>${CMAKE_CURRENT_SOURCE_DIR}/include/type_defs.inc"
-    "-DOUT_FILE=${LIBSOCK_DIST_INC}"
+    "-DINC_FILES=${LIBSOCK_INC_TEMPLATE}$<SEMICOLON>${CMAKE_CURRENT_SOURCE_DIR}/include/type_defs.inc$<SEMICOLON>${CMAKE_CURRENT_SOURCE_DIR}/include/errno.inc"
+    "-DOUT_FILE=${LIBSOCK_INC}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenDistInc.cmake"
   DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/sock.inc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/c_bridge.inc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/errno.inc"
+    "${LIBSOCK_INC_TEMPLATE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/type_defs.inc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/errno.inc"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenDistInc.cmake"
-  COMMENT "Generating dist/sock.inc"
+  COMMENT "Generating cmake-formed include/sock.inc"
   VERBATIM)
-add_custom_target(libsock_dist_inc ALL DEPENDS "${LIBSOCK_DIST_INC}")
+add_custom_target(libsock_inc ALL DEPENDS "${LIBSOCK_INC}")
 
 # ---------------------------------------------------------------- install
 install(TARGETS sock EXPORT libsock-targets
   ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
   LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 install(FILES
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/sock.inc"
   "${CMAKE_CURRENT_SOURCE_DIR}/include/c_bridge.inc"
   "${CMAKE_CURRENT_SOURCE_DIR}/include/errno.inc"
   "${CMAKE_CURRENT_SOURCE_DIR}/include/type_defs.inc"
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
-install(FILES "${LIBSOCK_DIST_INC}" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-  RENAME sock.inc)
+install(FILES "${LIBSOCK_INC}" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 
 if(WIN32)
   set(LIBSOCK_PC_PRIVATE "-lws2_32")

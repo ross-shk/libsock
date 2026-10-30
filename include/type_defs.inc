@@ -21,6 +21,11 @@
  %replace IPPROTO_TCP  by  6;
  %replace IPPROTO_UDP  by 17;
 
+ /* --- C error number (thread-local in libc; shim on Windows) ---
+  * Declared here so callers that include type_defs (directly or via
+  * sock.inc) can read errno without pulling in c_bridge.inc. */
+ dcl errno fixed bin(31) external;
+
  /* --- shutdown(2) directions ---------------------------------- */
  %replace SHUT_RD      by 0;
  %replace SHUT_WR      by 1;
