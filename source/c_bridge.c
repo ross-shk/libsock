@@ -240,7 +240,7 @@ static int wsa_to_errno(int wsa) {
   }
 }
 
-int socket(int family, int type, int proto) {
+int c_socket(int family, int type, int proto) {
   SOCKET s;
   int fd;
   if (ws_ensure() < 0) return -1;
@@ -251,7 +251,7 @@ int socket(int family, int type, int proto) {
   return fd;
 }
 
-int close(int fd) {
+int c_close(int fd) {
   SOCKET s = ws_lookup(fd);
   if (s == INVALID_SOCKET) { errno = LNX_EBADF; return -1; }
   ws_drop(fd);
@@ -259,14 +259,14 @@ int close(int fd) {
   return 0;
 }
 
-int shutdown(int fd, int how) {
+int c_shutdown(int fd, int how) {
   SOCKET s = ws_lookup(fd);
   if (s == INVALID_SOCKET) { errno = LNX_EBADF; return -1; }
   if (p_shutdown(s, how) != 0) { errno = wsa_to_errno(WSAGetLastError()); return -1; }
   return 0;
 }
 
-int bind(int fd, const char *addr_buf, int addrlen) {
+int c_bind(int fd, const char *addr_buf, int addrlen) {
   SOCKET s = ws_lookup(fd);
   if (s == INVALID_SOCKET) { errno = LNX_EBADF; return -1; }
   if (p_bind(s, (const struct sockaddr *)addr_buf, addrlen) != 0) {
@@ -275,14 +275,14 @@ int bind(int fd, const char *addr_buf, int addrlen) {
   return 0;
 }
 
-int listen(int fd, int backlog) {
+int c_listen(int fd, int backlog) {
   SOCKET s = ws_lookup(fd);
   if (s == INVALID_SOCKET) { errno = LNX_EBADF; return -1; }
   if (p_listen(s, backlog) != 0) { errno = wsa_to_errno(WSAGetLastError()); return -1; }
   return 0;
 }
 
-int accept(int fd, void *addr, int *addrlen) {
+int c_accept(int fd, void *addr, int *addrlen) {
   SOCKET s = ws_lookup(fd);
   SOCKET c;
   int nfd;
@@ -295,7 +295,7 @@ int accept(int fd, void *addr, int *addrlen) {
   return nfd;
 }
 
-int connect(int fd, const char *addr_buf, int addrlen) {
+int c_connect(int fd, const char *addr_buf, int addrlen) {
   SOCKET s = ws_lookup(fd);
   if (s == INVALID_SOCKET) { errno = LNX_EBADF; return -1; }
   if (p_connect(s, (const struct sockaddr *)addr_buf, addrlen) != 0) {
@@ -304,7 +304,7 @@ int connect(int fd, const char *addr_buf, int addrlen) {
   return 0;
 }
 
-int send(int fd, const char *buf, int len, int flags) {
+int c_send(int fd, const char *buf, int len, int flags) {
   SOCKET s = ws_lookup(fd);
   int n;
   if (s == INVALID_SOCKET) { errno = LNX_EBADF; return -1; }
@@ -313,7 +313,7 @@ int send(int fd, const char *buf, int len, int flags) {
   return n;
 }
 
-int recv(int fd, char *buf, int len, int flags) {
+int c_recv(int fd, char *buf, int len, int flags) {
   SOCKET s = ws_lookup(fd);
   int n;
   if (s == INVALID_SOCKET) { errno = LNX_EBADF; return -1; }
@@ -322,8 +322,8 @@ int recv(int fd, char *buf, int len, int flags) {
   return n;
 }
 
-int sendto(int fd, const char *buf, int len, int flags,
-           const char *addr_buf, int addrlen) {
+int c_sendto(int fd, const char *buf, int len, int flags,
+             const char *addr_buf, int addrlen) {
   SOCKET s = ws_lookup(fd);
   int r;
   if (s == INVALID_SOCKET) { errno = LNX_EBADF; return -1; }
@@ -333,8 +333,8 @@ int sendto(int fd, const char *buf, int len, int flags,
   return r;
 }
 
-int recvfrom(int fd, char *buf, int len, int flags,
-             char *addr_buf, int *addrlen) {
+int c_recvfrom(int fd, char *buf, int len, int flags,
+               char *addr_buf, int *addrlen) {
   SOCKET s = ws_lookup(fd);
   int alen;
   int r;
@@ -347,8 +347,8 @@ int recvfrom(int fd, char *buf, int len, int flags,
   return r;
 }
 
-int setsockopt(int fd, int level, int optname,
-               const void *value, int optlen) {
+int c_setsockopt(int fd, int level, int optname,
+                 const void *value, int optlen) {
   SOCKET s = ws_lookup(fd);
   if (s == INVALID_SOCKET) { errno = LNX_EBADF; return -1; }
   if (p_setsockopt(s, level, optname, (const char *)value, optlen) != 0) {
@@ -357,8 +357,8 @@ int setsockopt(int fd, int level, int optname,
   return 0;
 }
 
-int getsockopt(int fd, int level, int optname,
-               void *value, int *optlen) {
+int c_getsockopt(int fd, int level, int optname,
+                 void *value, int *optlen) {
   SOCKET s = ws_lookup(fd);
   if (s == INVALID_SOCKET) { errno = LNX_EBADF; return -1; }
   if (p_getsockopt(s, level, optname, (char *)value, (int *)optlen) != 0) {
@@ -367,7 +367,7 @@ int getsockopt(int fd, int level, int optname,
   return 0;
 }
 
-int getpeername(int fd, char *addr_buf, int *addrlen) {
+int c_getpeername(int fd, char *addr_buf, int *addrlen) {
   SOCKET s = ws_lookup(fd);
   int alen;
   if (s == INVALID_SOCKET) { errno = LNX_EBADF; return -1; }
@@ -379,7 +379,7 @@ int getpeername(int fd, char *addr_buf, int *addrlen) {
   return 0;
 }
 
-int getsockname(int fd, char *addr_buf, int *addrlen) {
+int c_getsockname(int fd, char *addr_buf, int *addrlen) {
   SOCKET s = ws_lookup(fd);
   int alen;
   if (s == INVALID_SOCKET) { errno = LNX_EBADF; return -1; }
@@ -391,7 +391,7 @@ int getsockname(int fd, char *addr_buf, int *addrlen) {
   return 0;
 }
 
-int fcntl(int fd, int cmd, int arg) {
+int c_fcntl(int fd, int cmd, int arg) {
   SOCKET s = ws_lookup(fd);
   unsigned long mode;
   if (s == INVALID_SOCKET) { errno = LNX_EBADF; return -1; }
@@ -422,7 +422,7 @@ struct pli_pollfd {
   short revents;
 };
 
-int poll(void *fds, int nfds, int ms) {
+int c_poll(void *fds, int nfds, int ms) {
   struct pli_pollfd *pfds = (struct pli_pollfd *)fds;
   WSAPOLLFD *wpfds;
   int *idx;
@@ -438,8 +438,8 @@ int poll(void *fds, int nfds, int ms) {
     idx[nvalid] = i;
     wpfds[nvalid].fd = s;
     wpfds[nvalid].events = 0;
-    if (pfds[i].events & LIBNET_POLLIN)  wpfds[nvalid].events |= WS_POLLIN;
-    if (pfds[i].events & LIBNET_POLLOUT) wpfds[nvalid].events |= WS_POLLOUT;
+    if (pfds[i].events & LIBNET_POLLIN)  wpfds[nvalid].events |= POLLIN;
+    if (pfds[i].events & LIBNET_POLLOUT) wpfds[nvalid].events |= POLLOUT;
     wpfds[nvalid].revents = 0;
     nvalid++;
   }
@@ -452,9 +452,9 @@ int poll(void *fds, int nfds, int ms) {
     }
     for (i = 0; i < nvalid; ++i) {
       short ev = 0;
-      if (wpfds[i].revents & WS_POLLIN)  ev |= (short)LIBNET_POLLIN;
-      if (wpfds[i].revents & WS_POLLOUT) ev |= (short)LIBNET_POLLOUT;
-      if (wpfds[i].revents & (WS_POLLERR | WS_POLLHUP | WS_POLLNVAL))
+      if (wpfds[i].revents & POLLIN)  ev |= (short)LIBNET_POLLIN;
+      if (wpfds[i].revents & POLLOUT) ev |= (short)LIBNET_POLLOUT;
+      if (wpfds[i].revents & (POLLERR | POLLHUP | POLLNVAL))
         ev |= (short)LIBNET_POLLERR;
       pfds[idx[i]].revents = ev;
       if (ev) ready++;
@@ -464,13 +464,13 @@ int poll(void *fds, int nfds, int ms) {
   return ready + bad;
 }
 
-int getaddrinfo(const char *node, const char *service,
-                const struct addrinfo *hints, struct addrinfo **res) {
+int c_getaddrinfo(const char *node, const char *service,
+                  const struct addrinfo *hints, struct addrinfo **res) {
   if (ws_ensure() < 0) return EAI_FAIL;
   return p_getaddrinfo(node, service, hints, res);
 }
 
-void freeaddrinfo(struct addrinfo *res) {
+void c_freeaddrinfo(struct addrinfo *res) {
   if (!res) return;
   if (ws_ensure() < 0) return;
   p_freeaddrinfo(res);
