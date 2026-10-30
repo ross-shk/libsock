@@ -65,10 +65,43 @@ else()
   set(LIBSOCK_HAVE_PLI FALSE)
 endif()
 
+# ------------------------------------------------ platform constant selection
+# include/errno.inc and include/type_defs.inc are stubs; the real platform
+# constants live in platform/errno-<platform>.inc and
+# platform/type_defs-<platform>.inc. CMake copies the selected variant into
+# ${CMAKE_CURRENT_BINARY_DIR}/include/ at configure time (file(COPY), no
+# build custom commands), so %include errno / %include type_defs in
+# source/sock.pli resolve to the platform copy via include ordering below.
+if(APPLE)
+  set(LIBSOCK_PLATFORM darwin)
+elseif(WIN32)
+  set(LIBSOCK_PLATFORM windows)
+else()
+  set(LIBSOCK_PLATFORM linux)
+endif()
+set(LIBSOCK_PLATFORM "${LIBSOCK_PLATFORM}" CACHE STRING "Target platform for errno/type_defs constants (darwin/linux/windows)")
+set(LIBSOCK_TYPE_DEFS_INC "${CMAKE_CURRENT_SOURCE_DIR}/platform/type_defs-${LIBSOCK_PLATFORM}.inc")
+set(LIBSOCK_ERRNO_INC     "${CMAKE_CURRENT_SOURCE_DIR}/platform/errno-${LIBSOCK_PLATFORM}.inc")
+if(NOT EXISTS "${LIBSOCK_TYPE_DEFS_INC}")
+  message(FATAL_ERROR "Platform type_defs file not found: ${LIBSOCK_TYPE_DEFS_INC}")
+endif()
+if(NOT EXISTS "${LIBSOCK_ERRNO_INC}")
+  message(FATAL_ERROR "Platform errno file not found: ${LIBSOCK_ERRNO_INC}")
+endif()
+
+# Resolved platform copies used by the PL/I compile and GenDistInc.
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/include")
+file(READ "${LIBSOCK_TYPE_DEFS_INC}" _LIBSOCK_TD_CONTENT)
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/include/type_defs.inc" "${_LIBSOCK_TD_CONTENT}")
+file(READ "${LIBSOCK_ERRNO_INC}" _LIBSOCK_ERRNO_CONTENT)
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/include/errno.inc" "${_LIBSOCK_ERRNO_CONTENT}")
+
 set(LIBSOCK_PLI_INCLUDES
   "${CMAKE_CURRENT_SOURCE_DIR}/include/c_bridge.inc"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/type_defs.inc"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/errno.inc")
+  "${LIBSOCK_TYPE_DEFS_INC}"
+  "${LIBSOCK_ERRNO_INC}"
+  "${CMAKE_CURRENT_BINARY_DIR}/include/type_defs.inc"
+  "${CMAKE_CURRENT_BINARY_DIR}/include/errno.inc")
 
 if(LIBSOCK_HAVE_PLI)
   # Compile the PL/I module; the object joins the static lib alongside
@@ -81,6 +114,7 @@ if(LIBSOCK_HAVE_PLI)
     OUTPUT "${LIBSOCK_PLI_OBJ_SOCK}"
     COMMAND "${PLI_EXECUTABLE}" ${_pli_flags}
       -c "${CMAKE_CURRENT_SOURCE_DIR}/source/sock.pli"
+      -I "${CMAKE_CURRENT_BINARY_DIR}/include"
       -I "${CMAKE_CURRENT_SOURCE_DIR}/include"
       -o "${LIBSOCK_PLI_OBJ_SOCK}"
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/source/sock.pli" ${LIBSOCK_PLI_INCLUDES}
@@ -103,13 +137,13 @@ set(LIBSOCK_INC "${CMAKE_CURRENT_SOURCE_DIR}/include/sock.inc")
 add_custom_command(
   OUTPUT "${LIBSOCK_INC}"
   COMMAND "${CMAKE_COMMAND}"
-    "-DINC_FILES=${LIBSOCK_INC_TEMPLATE}$<SEMICOLON>${CMAKE_CURRENT_SOURCE_DIR}/include/type_defs.inc$<SEMICOLON>${CMAKE_CURRENT_SOURCE_DIR}/include/errno.inc"
+    "-DINC_FILES=${LIBSOCK_INC_TEMPLATE}$<SEMICOLON>${CMAKE_CURRENT_BINARY_DIR}/include/type_defs.inc$<SEMICOLON>${CMAKE_CURRENT_BINARY_DIR}/include/errno.inc"
     "-DOUT_FILE=${LIBSOCK_INC}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenDistInc.cmake"
   DEPENDS
     "${LIBSOCK_INC_TEMPLATE}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/type_defs.inc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/errno.inc"
+    "${CMAKE_CURRENT_BINARY_DIR}/include/type_defs.inc"
+    "${CMAKE_CURRENT_BINARY_DIR}/include/errno.inc"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenDistInc.cmake"
   COMMENT "Generating cmake-formed include/sock.inc"
   VERBATIM)
@@ -121,8 +155,12 @@ install(TARGETS sock EXPORT libsock-targets
   LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 install(FILES
   "${CMAKE_CURRENT_SOURCE_DIR}/include/c_bridge.inc"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/errno.inc"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/type_defs.inc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/platform/type_defs-darwin.inc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/platform/type_defs-linux.inc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/platform/type_defs-windows.inc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/platform/errno-darwin.inc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/platform/errno-linux.inc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/platform/errno-windows.inc"
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 install(FILES "${LIBSOCK_INC}" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 
