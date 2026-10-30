@@ -16,33 +16,33 @@
      response         char(4096),
      (sent, n, total) fixed bin(31);
 
-   /* Resolve example.com:80 into a 16-byte sockaddr_in. */
+   /* Resolve example.com:80 into a 16-byte sockaddr_in */
    if sock_getaddrinfo('example.com', 80, url) ^= 0 then do;
      put skip list('getaddrinfo failed, errno=', errno);
      stop;
    end;
 
-   /* Create a stream socket. */
+   /* Create a stream socket */
    fd = new_socket(AF_INET, SOCK_STREAM, 0);
    if fd < 0 then do;
      put skip list('socket failed, errno=', errno);
      stop;
    end;
 
-   /* Connect to the resolved address. */
+   /* Connect to the resolved address */
    if sock_connect(fd, url) ^= 0 then do;
      put skip list('connect failed, errno=', errno);
      call sock_close(fd);
      stop;
    end;
 
-   /* Send HTTP/1.0 GET request with close. */
+   /* Send HTTP/1.0 GET request with close */
    request = 'GET / HTTP/1.0' || '0D0A'x || 'Host: example.com'
        || '0D0A'x || 'Connection: close' || '0D0A'x || '0D0A'x;
    sent = sock_send(fd, request, 0);
    put skip list('sent', sent, 'request bytes');
 
-   /* Read the response in chunks until the peer closes. */
+   /* Read the response in chunks until the peer closes */
    total = 0;
    do while ('1'b);
      n = sock_recv(fd, response, 0);

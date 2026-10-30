@@ -1,14 +1,10 @@
 # libsock — PL/I socket compatibility layer
 
-A thin socket compatibility layer that provides `c_*` and `sock_*` bindings for
-PL/I programs. It is consumed as an external black-box dependency by
-[libnet](https://github.com/ross-shk/libnet), which builds and links against
-`libsock.a` rather than compiling the socket source itself.
+A thin socket compatibility layer that provides socket bindings for PL/I programs.
 
 ## Requirements
 
-- **pli-llvm** — modern open-source PL/I compiler targetting LLVM (optional;
-  when absent, only the C bridge is built)
+- **pli-llvm** — modern open-source PL/I compiler targetting LLVM
   - GitHub: [https://github.com/pli-llvm/pli-llvm](https://github.com/pli-llvm/pli-llvm)
 - **C compiler** (clang/gcc/MSVC/MinGW) — for `c_bridge.c` (Windows only)
 - **CMake ≥ 3.16** — portable build system (Linux, macOS, Windows)
@@ -19,22 +15,85 @@ PL/I programs. It is consumed as an external black-box dependency by
 
 ## Quick Start
 
+Build with:
+
 ```bash
 cmake -S . -B build
 cmake --build build
+```
 
+and then install:
+
+```bash
 cmake --install build --prefix /usr/local
+```
+
+## Usage
+
+Use it similarly to the POSIX socket library, see the full example in [examples/simple_usage.pli](./examples/simple_usage.pli), compile with `pli examples/simple_usage.pli -lsock -o simple_usage`.
+
+Resolve `example.com:80` with error handling:
+
+```c
+if sock_getaddrinfo('example.com', 80, url) ^= 0 then do;
+  put skip list('getaddrinfo failed, errno=', errno);
+  stop;
+end;
+```
+
+Create a stream socket:
+
+```c
+fd = new_socket(AF_INET, SOCK_STREAM, 0);
+```
+
+Connect to the resolved address:
+
+```c
+if sock_connect(fd, url) ^= 0 then do;
+  put skip list('connect failed, errno=', errno);
+  call sock_close(fd);
+  stop;
+end;
+```
+
+Send HTTP/1.0 GET request with close:
+
+```bcash
+request = 'GET / HTTP/1.0' || '0D0A'x || 'Host: example.com'
+       || '0D0A'x || 'Connection: close' || '0D0A'x || '0D0A'x;
+sent = sock_send(fd, request, 0);
+```
+
+Read the response in chunks until the peer closes:
+
+```c
+total = 0;
+do while ('1'b);
+  n = sock_recv(fd, response, 0);
+
+  if n < 0 then do;
+    put skip list('recv failed, errno=', errno);
+    stop;
+  end;
+  if n = 0 then leave;
+
+  total = total + n;
+
+  put skip list(substr(response, 1, n));
+end;
+```
+
+Close the socket:
+
+```c
+call sock_close(fd);
 ```
 
 ## Architecture
 
-- **C bridge** (`source/c_bridge.c`): the ONLY C — thin syscall wrappers
-  (`c_*` naming) around Winsock2 on Windows. On POSIX, the `c_*` symbols
-  resolve to libc directly via pli-llvm's by-value FFI; no C source is
-  compiled.
-- **PL/I wrappers** (`source/sock.pli`): `sock_*` procedures that wrap the raw
-  `c_*` syscalls with argument translation (e.g. poll mask mapping,
-  `fcntl`-based nonblock control, `getaddrinfo` port injection).
+- **C bridge** (`source/c_bridge.c`): the ONLY C — thin syscall wrappers (`c_*` naming) around Winsock2 on Windows. On POSIX, the `c_*` symbols resolve to libc directly via pli-llvm's by-value FFI; no C source is compiled.
+- **PL/I wrappers** (`source/sock.pli`): `sock_*` procedures that wrap the raw `c_*` syscalls with argument translation (e.g. poll mask mapping, `fcntl`-based nonblock control, `getaddrinfo` port injection).
 
 ## Layout
 
