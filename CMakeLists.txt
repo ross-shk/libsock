@@ -18,6 +18,15 @@ option(LIBSOCK_ENABLE_PLI "Build the compiled PL/I module when the PL/I compiler
 set(LIBSOCK_PLIFLAGS "" CACHE STRING "Extra flags forwarded to the PL/I compiler")
 set(PLI_LLVM "$ENV{PLI_LLVM}" CACHE PATH "pli-llvm install prefix (bin/pli)")
 
+# Build products (static lib, etc.) land in ./lib at the project root, and
+# ./lib ./include are created so consumers (e.g. libnet) can use the tree
+# directly without running install.
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib)
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lib"
+     "${CMAKE_CURRENT_SOURCE_DIR}/include")
+
 # ---------------------------------------------------------------- C bridge
 # On POSIX (Linux/macOS) no C source is compiled: c_* symbols resolve
 # to libc directly via pli-llvm's external() bindings. On Windows,
