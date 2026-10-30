@@ -9,8 +9,8 @@
  *          getaddrinfo wrapping with port injection.
  *
  * On POSIX (Linux/macOS) c_* resolves to libc directly via external();
- * no C source is compiled into the library.  On Windows, source/c_bridge.c
- * provides c_* implementations wrapping Winsock2.
+ * no C source is compiled into the library.  On Windows,
+ * source/c_bridge.c provides c_* implementations wrapping Winsock2.
  *
  * Error handling: sock_* procedures return raw values (0 on success,
  * -1 on error) and let libc set errno.  Condition raising is the
@@ -24,7 +24,7 @@ sock: package exports(sock_socket, sock_close, sock_shutdown, sock_bind,
     sock_poll_multi, sock_getaddrinfo, sock_freeaddrinfo);
 
 /*--- struct sizes ---*/
-%replace ADDRINFO_SIZE by 48;  /* sizeof(struct addrinfo) on macOS arm64 */
+%replace ADDRINFO_SIZE by 48;  /* struct addrinfo size, macOS arm64 */
 %replace POLLFD_BUF_SIZE by 8192;   /* NET_MAX_CLIENTS(1024) * 8 */
 %replace HOST_BUF_SIZE by 257;       /* NET_HOST_MAX(256) + 1 */
 %include c_bridge;
@@ -105,7 +105,7 @@ sock_listen: procedure (fd, backlog) returns (fixed bin(31));
     return (c_listen(fd, backlog));
 end sock_listen;
 
-/* accept with NULL sockaddr/addrlen (simpler interface than c_accept). */
+/* accept with NULL sockaddr/addrlen (simpler than c_accept). */
 sock_accept: procedure (fd) returns (fixed bin(31));
     dcl fd fixed bin(31);
     return (c_accept(fd, null(), null()));
@@ -152,7 +152,8 @@ sock_recvfrom: procedure (fd, buf, flags, addr_buf, addrlen_ptr)
     dcl flags fixed bin(31);
     dcl addr_buf char(*);
     dcl addrlen_ptr pointer;
-    return (c_recvfrom(fd, buf, length(buf), flags, addr_buf, addrlen_ptr));
+    return (c_recvfrom(fd, buf, length(buf), flags, addr_buf,
+        addrlen_ptr));
 end sock_recvfrom;
 
 /*===============================================================*/
@@ -165,7 +166,8 @@ sock_setsockopt: procedure (fd, level, optname, value_ptr)
     dcl level fixed bin(31);
     dcl optname fixed bin(31);
     dcl value_ptr char(*);
-    return (c_setsockopt(fd, level, optname, addr(value_ptr), length(value_ptr)));
+    return (c_setsockopt(fd, level, optname, addr(value_ptr),
+        length(value_ptr)));
 end sock_setsockopt;
 
 sock_getsockopt: procedure (fd, level, optname, value_ptr, optlen_ptr)
@@ -303,8 +305,10 @@ sock_poll_multi: procedure (fds_ptr, events_ptr, revents_ptr,
     do i = 1 to nfds;
         pfd_arr(i).pfd_fd = fd_arr.fd_val(i);
         c_events = 0;
-        if mod(ev_arr.ev_val(i), 2) ^= 0 then c_events = c_events + C_POLLIN;
-        if mod(ev_arr.ev_val(i) / 2, 2) ^= 0 then c_events = c_events + C_POLLOUT;
+        if mod(ev_arr.ev_val(i), 2) ^= 0 then
+            c_events = c_events + C_POLLIN;
+        if mod(ev_arr.ev_val(i) / 2, 2) ^= 0 then
+            c_events = c_events + C_POLLOUT;
         pfd_arr(i).pfd_events = c_events;
         pfd_arr(i).pfd_revents = 0;
     end;
@@ -316,10 +320,14 @@ sock_poll_multi: procedure (fds_ptr, events_ptr, revents_ptr,
     do i = 1 to nfds;
         c_revents = pfd_arr(i).pfd_revents;
         rv_arr.rv_val(i) = 0;
-        if mod(c_revents, 2) ^= 0 then rv_arr.rv_val(i) = rv_arr.rv_val(i) + POLLIN;
-        if mod(c_revents / 4, 2) ^= 0 then rv_arr.rv_val(i) = rv_arr.rv_val(i) + POLLOUT;
-        if mod(c_revents / 8, 2) ^= 0 | mod(c_revents / 16, 2) ^= 0 |
-           mod(c_revents / 32, 2) ^= 0 then rv_arr.rv_val(i) = rv_arr.rv_val(i) + 4;
+        if mod(c_revents, 2) ^= 0 then
+            rv_arr.rv_val(i) = rv_arr.rv_val(i) + POLLIN;
+        if mod(c_revents / 4, 2) ^= 0 then
+            rv_arr.rv_val(i) = rv_arr.rv_val(i) + POLLOUT;
+        if mod(c_revents / 8, 2) ^= 0 |
+           mod(c_revents / 16, 2) ^= 0 |
+           mod(c_revents / 32, 2) ^= 0 then
+            rv_arr.rv_val(i) = rv_arr.rv_val(i) + 4;
         if rv_arr.rv_val(i) ^= 0 then ready = ready + 1;
     end;
 
@@ -366,7 +374,7 @@ sock_getaddrinfo: procedure (host, port, addr_buf)
     dcl port_lo fixed bin(31);
     dcl header fixed bin(63);
 
-    /* NUL-terminate host into a buffer (libc getaddrinfo needs C string). */
+    /* NUL-terminate host in host_buf (getaddrinfo needs C string). */
     host_buf = low(HOST_BUF_SIZE);
     n = length(host);
     if n > NET_HOST_MAX then n = NET_HOST_MAX;
@@ -399,7 +407,7 @@ sock_getaddrinfo: procedure (host, port, addr_buf)
     p = res_view.rai_addr;
     addr_buf = src_buf;
 
-    /* Overwrite sin_port with the requested port (network byte order). */
+    /* Overwrite sin_port with requested port (network byte order). */
     port_hi = mod(port / 256, 256);
     port_lo = mod(port, 256);
     header = SOCKADDR_IN_SIZE + AF_INET * 256 +

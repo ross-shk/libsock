@@ -7,7 +7,8 @@
   *
   * The connection object is owned by the library (per-handle BASED
   * storage); callers hold only a POINTER handle. The structure layout
-  * is private to the library and is declared in source/net.pli, not here.
+  * is private to the library and is declared in
+  * source/net.pli, not here.
   */
 
  /* --- address family / socket type / protocol (POSIX) --------- */
