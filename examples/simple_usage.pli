@@ -3,11 +3,12 @@
  /* Module:    simple_usage */
  /* Purpose:   Connect to example.com:80, send GET /, */
  /*            read the reply with sock_recv. */
- /* Usage:     pli examples/simple_usage.pli -I include -o build/examples/simple_usage -L build -lsock -Wl,-undefined -Wl,dynamic_lookup */
+ /* Usage:     pli examples/simple_usage.pli -I include -o build/
+            examples/simple_usage -L build -lsock
+            -Wl,-undefined -Wl,dynamic_lookup */
 
 usage: proc options(main);
 %include sock;
-%include type_defs;
 
    dcl fd            fixed bin(31);
    dcl addr          char(16);

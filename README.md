@@ -23,7 +23,6 @@ PL/I programs. It is consumed as an external black-box dependency by
 cmake -S . -B build
 cmake --build build
 
-# Install (libnet consumes an installed libsock)
 cmake --install build --prefix /usr/local
 ```
 

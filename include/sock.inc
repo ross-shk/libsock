@@ -16,6 +16,8 @@
   */
 
  %include c_bridge;
+ %include type_defs;
+ %include errno;
 
  /*--- Socket lifecycle ---*/
 
