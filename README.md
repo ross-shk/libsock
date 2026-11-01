@@ -4,7 +4,7 @@ A thin socket compatibility layer that provides socket bindings for PL/I program
 
 ## Requirements
 
-- **pli-llvm** — modern open-source PL/I compiler targetting LLVM
+- **pli-llvm** — modern cross-platform open-source PL/I compiler targetting LLVM
   - GitHub: [https://github.com/pli-llvm/pli-llvm](https://github.com/pli-llvm/pli-llvm)
 - **CMake ≥ 3.16** — portable build system (Linux, macOS, Windows)
 
