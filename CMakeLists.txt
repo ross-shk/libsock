@@ -67,6 +67,11 @@ if(LIBSOCK_HAVE_PLI)
     C_STANDARD 11
     C_STANDARD_REQUIRED ON
     OUTPUT_NAME sock)
+  foreach(_cfg IN ITEMS DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+    set_property(TARGET sock PROPERTY ARCHIVE_OUTPUT_DIRECTORY_${_cfg} "${CMAKE_CURRENT_SOURCE_DIR}/lib")
+    set_property(TARGET sock PROPERTY LIBRARY_OUTPUT_DIRECTORY_${_cfg} "${CMAKE_CURRENT_SOURCE_DIR}/lib")
+    set_property(TARGET sock PROPERTY RUNTIME_OUTPUT_DIRECTORY_${_cfg} "${CMAKE_CURRENT_SOURCE_DIR}/lib")
+  endforeach()
 endif()
 
 # ------------------------------------------------ platform constant selection
