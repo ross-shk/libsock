@@ -38,6 +38,10 @@
 %include type_defs;
 %include errno;
 
+/* errno storage for Winsock (no C dependency).  Defined here so callers
+ * referencing errno external (via sock.inc) resolve to this storage. */
+dcl errno fixed bin(31) init(0);
+
 /*--- struct layouts for PL/I-side construction/parsing ---*/
 
 /* WSAPOLLFD (16 bytes on 64-bit Windows):

@@ -7,9 +7,10 @@
 #                      (sock_* declarations + type_defs/errno inlined,
 #                       no %include dependencies)
 #
-# The PL/I module is optional: pli-llvm's `pli` compiler is usually absent on
-# Windows, so when it is not found only an empty stub lib is produced. Point CMake
-# at the PL/I compiler with -DPLI_EXECUTABLE=... or -DPLI_LLVM=...
+# Zero C dependency: the socket procedures are implemented entirely in PL/I
+# calling libc (POSIX) or Winsock2 (Windows) directly via external() FFI.
+# The library target only exists when the PL/I compiler is found.
+# Point CMake at the PL/I compiler with -DPLI_EXECUTABLE=... or -DPLI_LLVM=...
 cmake_minimum_required(VERSION 3.16)
 project(libsock LANGUAGES C VERSION 0.1.0)
 
@@ -30,29 +31,10 @@ file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lib"
      "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 # ---------------------------------------------------------------- C library
-# No C bridge is compiled on any platform (model B): sock_posix/sock_windows
-# call libc / Winsock2 directly via PL/I external() FFI.  ws2_32 is still
-# linked on Windows so the direct Winsock2 calls resolve.  sock_stub.c keeps
-# the static library non-empty and, on Windows, defines the errno storage.
-if(WIN32)
-  add_library(sock STATIC source/sock_stub.c)
-else()
-  add_library(sock STATIC source/sock_stub.c)
-endif()
-add_library(libsock::sock ALIAS sock)
-set_target_properties(sock PROPERTIES LINKER_LANGUAGE C)
-set_target_properties(sock PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  OUTPUT_NAME sock)
-target_compile_options(sock PRIVATE
-  $<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra>
-  $<$<C_COMPILER_ID:MSVC>:/W4>)
-if(WIN32)
-  # Winsock2 (WSAStartup/WSAPoll/getaddrinfo/...).
-  target_link_libraries(sock PUBLIC ws2_32)
-  target_compile_definitions(sock PRIVATE _WIN32_WINNT=0x0600 WIN32_LEAN_AND_MEAN)
-endif()
+# Zero C dependency: the socket procedures are implemented entirely in PL/I
+# calling libc (POSIX) or Winsock2 (Windows) directly via external() FFI.
+# ws2_32 is linked on Windows so the direct Winsock2 calls resolve.
+
 
 # ------------------------------------------------------- PL/I module (opt)
 find_program(PLI_EXECUTABLE NAMES pli
@@ -64,6 +46,27 @@ if(LIBSOCK_ENABLE_PLI AND PLI_EXECUTABLE)
   set(LIBSOCK_HAVE_PLI TRUE)
 else()
   set(LIBSOCK_HAVE_PLI FALSE)
+endif()
+
+# ---------------------------------------------------------------- C library
+# Zero C dependency: the socket procedures are implemented entirely in PL/I
+# calling libc (POSIX) or Winsock2 (Windows) directly via external() FFI.
+# ws2_32 is linked on Windows so the direct Winsock2 calls resolve.
+# The library target only exists when the PL/I compiler is found,
+# since the socket procedures are implemented entirely in PL/I.
+if(LIBSOCK_HAVE_PLI)
+  if(WIN32)
+    add_library(sock STATIC source/windows/sock.pli)
+    target_link_libraries(sock PUBLIC ws2_32)
+  else()
+    add_library(sock STATIC source/posix/sock.pli)
+  endif()
+  add_library(libsock::sock ALIAS sock)
+  set_target_properties(sock PROPERTIES LINKER_LANGUAGE C)
+  set_target_properties(sock PROPERTIES
+    C_STANDARD 11
+    C_STANDARD_REQUIRED ON
+    OUTPUT_NAME sock)
 endif()
 
 # ------------------------------------------------ platform constant selection

@@ -19,6 +19,8 @@
  %include type_defs;
  %include errno;
 
+ dcl errno fixed bin(31) external;
+
  /*--- Socket lifecycle ---*/
 
  /* Create a socket.  Wraps libc socket(2).
