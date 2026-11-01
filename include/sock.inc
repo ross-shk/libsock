@@ -1,6 +1,6 @@
- /* sock.inc - libnet socket compatibility layer interface.
-  *
-  * Module:  sock
+/* sock.inc - libnet socket compatibility layer interface.
+ *
+ * Module:  sock
  * Purpose: Declare the sock_* procedures (implemented in
  *          source/posix/sock.pli on POSIX and source/windows/sock.pli
  *          on Windows) that provide thin PL/I wrappers over the raw
