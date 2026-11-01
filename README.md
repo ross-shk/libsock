@@ -164,8 +164,6 @@ Run the server in one terminal and the client in another:
 ./client      # client: received echo: Hello, server
 ```
 
-### Dynamic Response Buffer
-
 ## Architecture
 
 - **PL/I wrappers — POSIX** (`source/posix/sock.pli`): `sock_*` procedures that call the raw libc socket calls directly via `external()` FFI; no C source is compiled.
