@@ -10,10 +10,9 @@ set(content "")
 foreach(f ${INC_FILES})
   file(READ "${f}" text)
   string(REPLACE "\r\n" "\n" text "${text}")
-  # Drop every %include line that ends with a newline ...
-  string(REGEX REPLACE "[ \t]*%include[^\n]*\n" "" text "${text}")
-  # ... plus a possible trailing %include line without one.
-  string(REGEX REPLACE "[ \t]*%include[^\n]*$" "" text "${text}")
+  # Drop every line whose first non-blank characters are %include.
+  # The (^|\n) anchor keeps prose mentions of %include intact.
+  string(REGEX REPLACE "(^|\n)[ \t]*%include[^\n]*" "\\1" text "${text}")
   string(APPEND content "${text}")
 endforeach()
 
