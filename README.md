@@ -20,7 +20,7 @@ cmake --build build
 and then install:
 
 ```bash
-cmake --iEnstall build
+cmake --install build
 ```
 
 ## Usage Example
@@ -28,7 +28,7 @@ cmake --iEnstall build
 Use it similarly to the POSIX socket library, see the full example in [examples/simple_usage.pli](./examples/simple_usage.pli), compile with:
 
 ```bash
-pli examples/simple_usage.pli -lsock -o simple_usage
+pli examples/simple_usage.pli -lsock -o simple_usage # or simple_usage.exe on Windows
 ```
 
 Declare variables holding the socket file descriptor, the URL, request and response buffers, and also byte counts:

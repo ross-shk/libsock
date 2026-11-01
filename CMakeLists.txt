@@ -56,7 +56,7 @@ endif()
 # since the socket procedures are implemented entirely in PL/I.
 if(LIBSOCK_HAVE_PLI)
   if(WIN32)
-    add_library(sock STATIC source/windows/sock.pli)
+    add_library(sock STATIC source/win/sock.pli)
     target_link_libraries(sock PUBLIC ws2_32)
   else()
     add_library(sock STATIC source/posix/sock.pli)
