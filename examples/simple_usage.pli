@@ -4,6 +4,7 @@
   * Purpose:   Connect to example.com:80, send GET /, 
   *            read the reply with sock_recv. 
   * Usage:     pli examples/simple_usage.pli -lsock -o simple_usage  
+  *            ./simple_usage
   */
 
  usage: proc options(main);
@@ -18,7 +19,7 @@
 
    /* Resolve example.com:80 into a 16-byte sockaddr_in */
    if sock_getaddrinfo('example.com', 80, url) ^= 0 then do;
-    put skip list('getaddrinfo failed, errno=', sock_errno());
+     put skip list('getaddrinfo failed, errno=', sock_errno());
      stop;
    end;
 

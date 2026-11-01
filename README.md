@@ -6,13 +6,7 @@ A thin socket compatibility layer that provides socket bindings for PL/I program
 
 - **pli-llvm** — modern open-source PL/I compiler targetting LLVM
   - GitHub: [https://github.com/pli-llvm/pli-llvm](https://github.com/pli-llvm/pli-llvm)
-- **C compiler** (clang/gcc/MSVC/MinGW) — only needed to link ws2_32 on Windows;
-  no C source is compiled into the library on any platform (model B).
 - **CMake ≥ 3.16** — portable build system (Linux, macOS, Windows)
-
-> **Platform note:** `include/errno.inc` and `include/type_defs.inc` currently
-> contain macOS arm64 socket/errno values. Linux/Windows need matching
-> constant files.
 
 ## Quick Start
 
@@ -26,12 +20,27 @@ cmake --build build
 and then install:
 
 ```bash
-cmake --install build --prefix /usr/local
+cmake --iEnstall build
 ```
 
-## Usage
+## Usage Example
 
-Use it similarly to the POSIX socket library, see the full example in [examples/simple_usage.pli](./examples/simple_usage.pli), compile with `pli examples/simple_usage.pli -lsock -o simple_usage`.
+Use it similarly to the POSIX socket library, see the full example in [examples/simple_usage.pli](./examples/simple_usage.pli), compile with:
+
+```bash
+pli examples/simple_usage.pli -lsock -o simple_usage
+```
+
+Declare variables holding the socket file descriptor, the URL, request and response buffers, and also byte counts:
+
+```bash
+ declare
+   fd               fixed bin(31),
+   url              char(16),
+   request          char(64),
+   response         char(4096),
+   (sent, n, total) fixed bin(31);
+```
 
 Resolve `example.com:80` with error handling:
 
