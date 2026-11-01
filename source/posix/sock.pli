@@ -17,15 +17,13 @@
      sock_getpeername, sock_getsockname, sock_setnonblock, sock_poll,
      sock_poll_multi, sock_getaddrinfo, sock_freeaddrinfo, sock_errno);
 
- dcl errno fixed bin(31) external;
-
  /*--- struct sizes ---*/
 %replace ADDRINFO_SIZE by 48;  /* struct addrinfo size, 64-bit */
 %replace POLLFD_BUF_SIZE by 8192;   /* NET_MAX_CLIENTS(1024) * 8 */
 %replace HOST_BUF_SIZE by 257;       /* NET_HOST_MAX(256) + 1 */
-%include sock_common;
 %include type_defs;
 %include errno;
+%include sock_common;
 
 /*--- struct layouts for PL/I-side construction/parsing ---*/
 
@@ -120,6 +118,27 @@ dcl c_getaddrinfo entry (pointer, pointer, pointer, pointer)
 
 dcl c_freeaddrinfo entry (pointer)
      options (linkage(system)) external ('freeaddrinfo');
+
+/*--- libc errno accessor ---*/
+/* errno is per-thread and not a plain symbol on glibc/Darwin, so go
+ * through the platform accessor (__errno_location / __error). */
+dcl c_errno_loc entry () returns (pointer)
+     options (linkage(system)) external (SOCK_ERRNO_ACCESSOR);
+
+dcl errno_ptr pointer;
+dcl 1 errno_view based(errno_ptr) unaligned,
+    2 errno_val fixed bin(31);
+
+set_errno: procedure (v);
+    dcl v fixed bin(31);
+    errno_ptr = c_errno_loc();
+    errno_view.errno_val = v;
+end set_errno;
+
+sock_errno: procedure () returns (fixed bin(31));
+    errno_ptr = c_errno_loc();
+    return (errno_view.errno_val);
+end sock_errno;
 
 /*--- fcntl constants (POSIX) ---*/
 %replace F_GETFL    by  3;
@@ -421,6 +440,17 @@ sock_getaddrinfo: procedure (host, port, addr_buf)
     dcl i fixed bin(31);
     dcl n fixed bin(31);
     dcl p pointer;
+%if addrinfo_addr_before_canon = 1 %then
+    dcl 1 res_view based(res_ptr) unaligned,
+        2 rai_flags   fixed bin(31),
+        2 rai_family  fixed bin(31),
+        2 rai_socktype fixed bin(31),
+        2 rai_protocol fixed bin(31),
+        2 rai_addrlen fixed bin(63),
+        2 rai_addr    pointer,
+        2 rai_canonname pointer,
+        2 rai_next    pointer;
+%else
     dcl 1 res_view based(res_ptr) unaligned,
         2 rai_flags   fixed bin(31),
         2 rai_family  fixed bin(31),
@@ -452,14 +482,14 @@ sock_getaddrinfo: procedure (host, port, addr_buf)
     gai = c_getaddrinfo(addr(host_buf), null(), ph, addr(res_ptr));
     if gai ^= 0 then do;
         /* Map EAI_* to errno. */
-        if gai = EAI_MEMORY then errno = ENOMEM;
-        else if gai = EAI_NONAME then errno = ENOENT;
-        else errno = EINVAL;
+        if gai = EAI_MEMORY then call set_errno(ENOMEM);
+        else if gai = EAI_NONAME then call set_errno(ENOENT);
+        else call set_errno(EINVAL);
         return (-1);
     end;
 
     if res_ptr = null() then do;
-        errno = ENOENT;
+        call set_errno(ENOENT);
         call c_freeaddrinfo(res_ptr);
         return (-1);
     end;
@@ -468,11 +498,13 @@ sock_getaddrinfo: procedure (host, port, addr_buf)
     p = res_view.rai_addr;
     addr_buf = src_buf;
 
-    /* Overwrite sin_port with requested port (network byte order). */
+    /* Overwrite sin_family/sin_port.  Darwin's sockaddr_in has a
+     * leading sin_len byte; Linux starts directly with sin_family.
+     * The port is big-endian in both layouts. */
     port_hi = mod(port / 256, 256);
     port_lo = mod(port, 256);
-    header = SOCKADDR_IN_SIZE + AF_INET * 256 +
-             port_hi * 65536 + port_lo * 16777216;
+    header = AF_INET + port_hi * 65536 + port_lo * 16777216 +
+             SOCKADDR_HAS_SIN_LEN * (SOCKADDR_IN_SIZE + AF_INET * 256);
     phdr = addr(addr_buf);
     if header >= 2147483648 then header = header - 4294967296;
     sockaddr_hdr.w0 = header;
@@ -485,9 +517,5 @@ sock_freeaddrinfo: procedure (ptr);
     dcl ptr pointer;
     call c_freeaddrinfo(ptr);
 end sock_freeaddrinfo;
-
-sock_errno: procedure () returns (fixed bin(31));
-    return (errno);
-end sock_errno;
 
 end sock;

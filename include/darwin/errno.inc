@@ -7,6 +7,9 @@
  * see CMakeLists.txt.
  */
 
+/* libc accessor for the thread-local errno (Darwin). */
+%replace SOCK_ERRNO_ACCESSOR by '__error';
+
 %replace EPERM        by   1;  /* Operation not permitted        */
 %replace ENOENT       by   2;  /* No such file or directory      */
 %replace EINTR        by   4;  /* Interrupted system call        */

@@ -54,6 +54,11 @@
 
 /* --- struct sizes (for raw buffer operations) ------------------- */
 %replace SOCKADDR_IN_SIZE  by 16;   /* sizeof(struct sockaddr_in) */
+/* Darwin sockaddr_in begins with sin_len, then sin_family. */
+%replace SOCKADDR_HAS_SIN_LEN by 1;
+/* Darwin struct addrinfo orders ai_canonname before ai_addr. */
+%declare addrinfo_addr_before_canon value(0);
+%activate addrinfo_addr_before_canon;
 %replace LINGER_SIZE       by  8;   /* sizeof(struct linger)       */
 %replace TIMEVAL_SIZE      by 16;   /* sizeof(struct timeval)      */
 

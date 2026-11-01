@@ -7,6 +7,9 @@
  * the positive macOS codes. PL/I %replace supports negative values.
  */
 
+/* libc accessor for the thread-local errno (glibc). */
+%replace SOCK_ERRNO_ACCESSOR by '__errno_location';
+
 %replace EPERM        by   1;  /* Operation not permitted        */
 %replace ENOENT       by   2;  /* No such file or directory      */
 %replace EINTR        by   4;  /* Interrupted system call        */

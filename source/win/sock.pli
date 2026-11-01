@@ -36,9 +36,9 @@
 %replace POLLFD_BUF_SIZE by 8192;   /* NET_MAX_CLIENTS(1024) * 8 (8-byte pollfd) */
 %replace WSAPOLLFD_BUF_SIZE by 16384; /* NET_MAX_CLIENTS(1024) * 16 (16-byte WSAPOLLFD) */
 %replace HOST_BUF_SIZE by 257;       /* NET_HOST_MAX(256) + 1 */
-%include sock_common;
 %include type_defs;
 %include errno;
+%include sock_common;
 
 /*--- struct layouts for PL/I-side construction/parsing ---*/
 
@@ -196,8 +196,8 @@ dcl c_freeaddrinfo entry (pointer)
 ws_lookup: procedure (fd) returns (pointer);
     dcl fd fixed bin(31);
     dcl i fixed bin(31);
-    i = fd - 1;
-    if i < 0 | i >= NET_MAX_CLIENTS | WS_USED(i) = 0 then return (null());
+    i = fd;
+    if i < 1 | i > NET_MAX_CLIENTS | WS_USED(i) = 0 then return (null());
     return (WS_TABLE(i));
 end ws_lookup;
 
@@ -217,8 +217,8 @@ end ws_alloc;
 ws_drop: procedure (fd);
     dcl fd fixed bin(31);
     dcl i fixed bin(31);
-    i = fd - 1;
-    if i >= 0 & i < NET_MAX_CLIENTS then do;
+    i = fd;
+    if i >= 1 & i <= NET_MAX_CLIENTS then do;
         WS_USED(i) = 0;
         WS_TABLE(i) = null();
     end;
@@ -698,6 +698,9 @@ sock_getaddrinfo: procedure (host, port, addr_buf)
     dcl port_lo fixed bin(31);
     dcl header fixed bin(63);
 
+    /* Lazy Winsock initialisation: getaddrinfo requires WSAStartup. */
+    if ws_ensure() < 0 then return (-1);
+
     /* NUL-terminate host in host_buf (getaddrinfo needs C string). */
     host_buf = low(HOST_BUF_SIZE);
     n = length(host);
@@ -729,11 +732,12 @@ sock_getaddrinfo: procedure (host, port, addr_buf)
     p = res_view.rai_addr;
     addr_buf = src_buf;
 
-    /* Overwrite sin_port with requested port (network byte order). */
+    /* Overwrite sin_family/sin_port in the Windows sockaddr_in.
+     * Windows sockaddr_in has no sin_len: byte 0-1 = sin_family (AF_INET),
+     * bytes 2-3 = sin_port (network byte order, little-endian storage). */
     port_hi = mod(port / 256, 256);
     port_lo = mod(port, 256);
-    header = SOCKADDR_IN_SIZE + AF_INET * 256 +
-             port_hi * 65536 + port_lo * 16777216;
+    header = AF_INET + port_hi * 65536 + port_lo * 16777216;
     phdr = addr(addr_buf);
     if header >= 2147483648 then header = header - 4294967296;
     sockaddr_hdr.w0 = header;
