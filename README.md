@@ -37,7 +37,7 @@ Resolve `example.com:80` with error handling:
 
 ```c
 if sock_getaddrinfo('example.com', 80, url) ^= 0 then do;
-  put skip list('getaddrinfo failed, errno=', errno);
+  put skip list('getaddrinfo failed, errno=', sock_errno());
   stop;
 end;
 ```
@@ -52,7 +52,7 @@ Connect to the resolved address:
 
 ```c
 if sock_connect(fd, url) ^= 0 then do;
-  put skip list('connect failed, errno=', errno);
+  put skip list('connect failed, errno=', sock_errno());
   call sock_close(fd);
   stop;
 end;
@@ -74,7 +74,7 @@ do while ('1'b);
   n = sock_recv(fd, response, 0);
 
   if n < 0 then do;
-    put skip list('recv failed, errno=', errno);
+    put skip list('recv failed, errno=', sock_errno());
     stop;
   end;
   if n = 0 then leave;

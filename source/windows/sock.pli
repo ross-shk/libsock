@@ -15,9 +15,10 @@
  *
  * Assumptions / risks (validate with the actual pli-llvm toolchain):
  *   - external() procedures returning a pointer (SOCKET) are supported.
- *   - errno storage: defined as `dcl errno fixed bin(31) init(0);` inside
- *     the sock package and exported via the package exports list; callers
- *     reference it as `dcl errno fixed bin(31) external;` via sock.inc.
+ *   - errno storage: defined as `dcl errno fixed bin(31);` inside
+ *     the sock package; `sock_errno()` procedure is exported and returns
+ *     its value.  Callers use `dcl sock_errno entry () returns (fixed
+ *     bin(31)) external;` via sock.inc.
  *   - WSAPOLLFD entries are 16 bytes and laid out over a char buffer;
  *     x86-64 permits unaligned pointer access, so the SOCKET field works.
  */
@@ -26,9 +27,9 @@
      sock_listen, sock_accept, sock_connect, sock_send, sock_recv,
      sock_sendto, sock_recvfrom, sock_setsockopt, sock_getsockopt,
      sock_getpeername, sock_getsockname, sock_setnonblock, sock_poll,
-      sock_poll_multi, sock_getaddrinfo, sock_freeaddrinfo);
+     sock_poll_multi, sock_getaddrinfo, sock_freeaddrinfo, sock_errno);
 
- dcl errno fixed bin(31) external;
+ dcl errno fixed bin(31);
 
 /*--- struct sizes ---*/
 %replace ADDRINFO_SIZE by 48;  /* struct addrinfo size, 64-bit */
@@ -745,5 +746,9 @@ sock_freeaddrinfo: procedure (ptr);
     dcl ptr pointer;
     call c_freeaddrinfo(ptr);
 end sock_freeaddrinfo;
+
+sock_errno: procedure () returns (fixed bin(31));
+    return (errno);
+end sock_errno;
 
 end sock;

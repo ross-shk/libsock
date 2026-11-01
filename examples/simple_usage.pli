@@ -18,20 +18,20 @@
 
    /* Resolve example.com:80 into a 16-byte sockaddr_in */
    if sock_getaddrinfo('example.com', 80, url) ^= 0 then do;
-     put skip list('getaddrinfo failed, errno=', errno);
+    put skip list('getaddrinfo failed, errno=', sock_errno());
      stop;
    end;
 
    /* Create a stream socket */
    fd = new_socket(AF_INET, SOCK_STREAM, 0);
    if fd < 0 then do;
-     put skip list('socket failed, errno=', errno);
+    put skip list('socket failed, errno=', sock_errno());
      stop;
    end;
 
    /* Connect to the resolved address */
    if sock_connect(fd, url) ^= 0 then do;
-     put skip list('connect failed, errno=', errno);
+     put skip list('connect failed, errno=', sock_errno());
      call sock_close(fd);
      stop;
    end;
@@ -48,7 +48,7 @@
      n = sock_recv(fd, response, 0);
 
      if n < 0 then do;
-       put skip list('recv failed, errno=', errno);
+       put skip list('recv failed, errno=', sock_errno());
        stop;
      end;
      if n = 0 then leave;

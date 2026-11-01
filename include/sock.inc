@@ -13,11 +13,11 @@
  * a private fd->SOCKET table held in source/windows/sock.pli.
  *
  * This include pulls in type_defs + errno so callers
- * (e.g. net.pli) get the errno variable and socket constants.
+ * (e.g. net.pli) get errno constants and the sock_errno procedure.
  */
 
 
- dcl errno fixed bin(31) external;
+ dcl sock_errno entry () returns (fixed bin(31)) external;
 
  /*--- Socket lifecycle ---*/
 

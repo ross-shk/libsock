@@ -15,9 +15,11 @@
      sock_listen, sock_accept, sock_connect, sock_send, sock_recv,
      sock_sendto, sock_recvfrom, sock_setsockopt, sock_getsockopt,
      sock_getpeername, sock_getsockname, sock_setnonblock, sock_poll,
-     sock_poll_multi, sock_getaddrinfo, sock_freeaddrinfo);
+     sock_poll_multi, sock_getaddrinfo, sock_freeaddrinfo, sock_errno);
 
-/*--- struct sizes ---*/
+ dcl errno fixed bin(31) external;
+
+ /*--- struct sizes ---*/
 %replace ADDRINFO_SIZE by 48;  /* struct addrinfo size, 64-bit */
 %replace POLLFD_BUF_SIZE by 8192;   /* NET_MAX_CLIENTS(1024) * 8 */
 %replace HOST_BUF_SIZE by 257;       /* NET_HOST_MAX(256) + 1 */
@@ -483,5 +485,9 @@ sock_freeaddrinfo: procedure (ptr);
     dcl ptr pointer;
     call c_freeaddrinfo(ptr);
 end sock_freeaddrinfo;
+
+sock_errno: procedure () returns (fixed bin(31));
+    return (errno);
+end sock_errno;
 
 end sock;
