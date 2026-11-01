@@ -25,7 +25,7 @@
      sent          fixed bin(31),
      request       char(56),
      url           char(16),
-     (body, spare) char(*) varying controlled,
+     body          char(*) varying controlled,
      chunk         char(64),
      chunk_len     fixed bin(31),
      requested_len fixed bin(31);
@@ -90,6 +90,9 @@
    put skip list('done');
 
    grow_buffer: procedure;
+     declare 
+       spare char(*) varying controlled;
+       
      /* Grow: ALLOCATE pushes a fresh generation, so copy body aside
         first (FREE would discard the bytes read so far). One chunk
         can exceed the buffer several times over, so loop. */
