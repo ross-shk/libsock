@@ -15,10 +15,9 @@
  *
  * Assumptions / risks (validate with the actual pli-llvm toolchain):
  *   - external() procedures returning a pointer (SOCKET) are supported.
- *   - errno storage: `dcl errno fixed bin(31) external;` is declared via
- *     type_defs; PL/I tentative definition of the external errno is assumed.
- *     If the linker reports an undefined errno, add an explicit errno
- *     definition here or a minimal C shim.
+ *   - errno storage: defined as `dcl errno fixed bin(31) init(0);` inside
+ *     the sock package and exported via the package exports list; callers
+ *     reference it as `dcl errno fixed bin(31) external;` via sock.inc.
  *   - WSAPOLLFD entries are 16 bytes and laid out over a char buffer;
  *     x86-64 permits unaligned pointer access, so the SOCKET field works.
  */
@@ -27,7 +26,9 @@
      sock_listen, sock_accept, sock_connect, sock_send, sock_recv,
      sock_sendto, sock_recvfrom, sock_setsockopt, sock_getsockopt,
      sock_getpeername, sock_getsockname, sock_setnonblock, sock_poll,
-     sock_poll_multi, sock_getaddrinfo, sock_freeaddrinfo);
+      sock_poll_multi, sock_getaddrinfo, sock_freeaddrinfo);
+
+ dcl errno fixed bin(31) external;
 
 /*--- struct sizes ---*/
 %replace ADDRINFO_SIZE by 48;  /* struct addrinfo size, 64-bit */
@@ -37,10 +38,6 @@
 %include sock_common;
 %include type_defs;
 %include errno;
-
-/* errno storage for Winsock (no C dependency).  Defined here so callers
- * referencing errno external (via sock.inc) resolve to this storage. */
-dcl errno fixed bin(31) init(0);
 
 /*--- struct layouts for PL/I-side construction/parsing ---*/
 
