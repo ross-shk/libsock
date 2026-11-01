@@ -1,0 +1,109 @@
+ /* dynamic_buff.pli - fetch http://example.com/ into a 
+ *    dynamically-sized string using raw sock_* calls.
+ *
+ * Purpose:   Demonstrates dynamic string allocation over the raw 
+ *            sock_* interface:
+ *            - CHAR(*) VARYING CONTROLLED declaration with asterisk
+ *              bound
+ *            - ALLOCATE var (n) CHARACTER VARYING with runtime
+ *              dimension
+ *            - Reads HTTP response of unknown length into CONTROLLED
+ *              string; LENGTH(body) returns FIXED BINARY live length
+ *            - Varying string grows automatically on concatenation (||)
+ *            - Buffer growth extracted into nested procedure     
+ *              grow_buffer, accessing enclosing variables via static
+ *              links
+ *  Build:     pli examples/dynamic_buff.pli -lsock -o dynamic_buff
+ *             ./dynamic_buff
+ */
+
+ dynamic_buff: procedure options (main);
+ %include sock;
+
+   dcl url           char(16);
+   dcl fd            fixed bin(31);
+   dcl sent          fixed bin(31);
+   dcl req           char(56);
+   dcl body          char(*) varying controlled;
+   dcl spare         char(*) varying controlled;
+   dcl chunk         char(NET_BUF_CAP);
+   dcl chunk_len     fixed bin(31);
+   dcl requested_len fixed bin(31);
+
+   /* Resolve example.com:80 into a 16-byte sockaddr_in */
+   if sock_getaddrinfo('example.com', 80, url) ^= 0 then do;
+     put skip list('getaddrinfo failed, errno=', sock_errno());
+     stop;
+   end;
+
+   /* Create a stream socket */
+   fd = new_socket(AF_INET, SOCK_STREAM, 0);
+   if fd < 0 then do;
+     put skip list('socket failed, errno=', sock_errno());
+     stop;
+   end;
+
+   /* Connect to the resolved address */
+   if sock_connect(fd, url) ^= 0 then do;
+     put skip list('connect failed, errno=', sock_errno());
+     call sock_close(fd);
+     stop;
+   end;
+
+   /* HTTP/1.0 GET request with Connection: close */
+   req = 'GET / HTTP/1.0' || '0D0A'x || 'Host: example.com' || '0D0A'x
+      || 'Connection: close' || '0D0A'x || '0D0A'x;
+   sent = sock_send(fd, req, 0);
+   put skip list('sent', sent, 'request bytes');
+
+   /* Small initial allocation to force buffer growth */
+   requested_len = 64;
+   allocate body (requested_len) character varying;
+
+   /* Read in chunks, growing the CONTROLLED string as needed.
+    * LENGTH(body) is FIXED BINARY: PL/I maintains the live length of
+    * a VARYING string. Concatenation (||) grows it automatically up
+    * to the allocated maximum; we re-allocate a larger generation
+    * whenever the next chunk would not fit. */
+   do while ('1'b);
+     chunk_len = sock_recv(fd, chunk, 0);
+      if chunk_len < 0 then do;
+        put skip list('recv failed, errno=', sock_errno());
+        call sock_close(fd);
+        stop;
+      end;
+      if chunk_len = 0 then leave;  /* EOF: peer closed */
+
+      call grow_buffer;
+
+      /* Append chunk - PL/I sets the VARYING length automatically */
+      body = body || substr(chunk, 1, chunk_len);
+   end;
+
+   put skip list('fetched', length(body), 'bytes from example.com');
+   if length(body) > 0 then put skip list(body);
+
+   call sock_close(fd);
+   free body;
+   put skip list('done');
+
+   grow_buffer: procedure;
+     /* Grow: ALLOCATE pushes a fresh generation, so copy body aside
+        first (FREE would discard the bytes read so far). One chunk
+        can exceed the buffer several times over, so loop. */
+     do while (length(body) + chunk_len > requested_len);
+       requested_len = requested_len * 2;
+
+       put skip list('growing buffer to', requested_len, 'bytes');
+       allocate spare (requested_len) character varying;
+
+       spare = body;
+       free body;
+
+       allocate body (requested_len) character varying;
+
+       body = spare;
+       free spare;
+     end;
+   end;
+ end;
