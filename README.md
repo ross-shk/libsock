@@ -72,8 +72,9 @@ end;
 Send HTTP/1.0 GET request with close:
 
 ```bcash
-request = 'GET / HTTP/1.0' || '0D0A'x || 'Host: example.com'
-       || '0D0A'x || 'Connection: close' || '0D0A'x || '0D0A'x;
+request = 'GET / HTTP/1.0'    || '0D0A'x 
+       || 'Host: example.com' || '0D0A'x 
+       || 'Connection: close' || '0D0A'x || '0D0A'x;
 sent = sock_send(fd, request, 0);
 ```
 
