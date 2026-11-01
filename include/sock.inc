@@ -1,18 +1,20 @@
  /* sock.inc - libnet socket compatibility layer interface.
   *
   * Module:  sock
-  * Purpose: Declare the sock_* procedures (implemented in
-  *          source/sock.pli) that provide thin PL/I wrappers over
-  *          the raw libc c_* bindings declared in c_bridge.inc.
-  *
-  * On POSIX (Linux/macOS) c_* resolves to libc symbols directly via
-  * external('socket') etc.; no C source is compiled.  On Windows,
-  * source/c_bridge.c provides the c_* implementations wrapping
-  * Winsock2.
-  *
-  * This include transitively pulls in c_bridge.inc so callers
-  * (e.g. net.pli) get the errno variable and c_bridge constants;
-  * net.pli can therefore replace  */
+ * Purpose: Declare the sock_* procedures (implemented in
+ *          source/posix/sock.pli on POSIX and source/windows/sock.pli
+ *          on Windows) that provide thin PL/I wrappers over the raw
+ *          platform socket calls.  The PL/I interface is identical on
+ *          both platforms; only the underlying calls differ.
+ *
+ * On POSIX (Linux/macOS) each sock_* procedure calls libc directly
+ * via external('socket') etc.; no C source is compiled.  On Windows,
+ * each sock_* procedure calls Winsock2 directly via external(), with
+ * a private fd->SOCKET table held in source/windows/sock.pli.
+ *
+ * This include pulls in type_defs + errno so callers
+ * (e.g. net.pli) get the errno variable and socket constants.
+ */
 
 
  /*--- Socket lifecycle ---*/
@@ -221,18 +223,18 @@
  dcl sock_freeaddrinfo entry (
      pointer         /* pointer to the addrinfo list to free */
  ) external;
-/* type_defs-darwin.inc - libnet shared types and constants (darwin reference).
+/* type_defs-windows.inc - libnet shared types and constants (Windows reference).
  *
- * Values are macOS (arm64). Linux values are noted for portability.
- * This file is copied over include/type_defs.inc at CMake configure time
- * when LIBSOCK_PLATFORM=darwin (the default on macOS); see CMakeLists.txt.
+ * Values match Winsock2 (ws2tcpip.h / winsock2.h) where they differ
+ * from macOS/Linux. This file is copied over include/type_defs.inc at
+ * CMake configure time when LIBSOCK_PLATFORM=windows; see CMakeLists.txt.
  */
 
  /* --- address family / socket type / protocol (POSIX) --------- */
  /* IPv4 only: address strings are 16-byte dotted quads. AF_INET6 */
  /* is reserved for a future revision with wider buffers.         */
 %replace AF_INET      by  2;
-%replace AF_INET6     by 30;  /* darwin; Linux: 10 */
+%replace AF_INET6     by 23;  /* Windows: 23 (AF_INET6); macOS: 30, Linux: 10 */
 %replace SOCK_STREAM  by  1;
 %replace SOCK_DGRAM   by  2;
 %replace IPPROTO_TCP  by  6;
@@ -263,17 +265,17 @@ dcl errno fixed bin(31) external;
 %replace NET_ERR_TIMEOUT   by -3;   /* read/write timeout or EAGAIN */
 %replace NET_ERR_OVERFLOW  by -4;   /* caller buffer exhausted      */
 
-/* --- raw socket option levels (platform-specific; darwin shown) ---
- * On Linux, SOL_SOCKET = 1. The PL/I layer passes these directly to
- * the raw sock_setsockopt / sock_getsockopt wrappers.
+/* --- raw socket option levels (platform-specific; Windows shown) ---
+ * On Linux, SOL_SOCKET = 1; on macOS, 65535. The PL/I layer passes
+ * these directly to the raw sock_setsockopt / sock_getsockopt wrappers.
  * ---------------------------------------------------------------- */
-%replace SOL_SOCKET     by 65535;  /* darwin; Linux: 1          */
-%replace SO_REUSEADDR   by     4;  /* darwin; Linux: 2          */
-%replace SO_KEEPALIVE   by     8;  /* darwin; Linux: 9          */
-%replace SO_LINGER      by   128;  /* darwin; Linux: 13         */
-%replace SO_RCVTIMEO    by  4102;  /* darwin; Linux: 20         */
-%replace SO_SNDTIMEO    by  4101;  /* darwin; Linux: 21         */
-%replace SO_ERROR       by  4103;  /* darwin; Linux: 4          */
+%replace SOL_SOCKET     by 65535;  /* Windows; Linux: 1, macOS: 65535 */
+%replace SO_REUSEADDR   by     4;  /* Windows; Linux: 2, macOS: 4     */
+%replace SO_KEEPALIVE   by     8;  /* Windows; Linux: 9, macOS: 8     */
+%replace SO_LINGER      by   128;  /* Windows; Linux: 13, macOS: 128  */
+%replace SO_RCVTIMEO    by  4102;  /* Windows; Linux: 20, macOS: 4102 */
+%replace SO_SNDTIMEO    by  4101;  /* Windows; Linux: 21, macOS: 4101 */
+%replace SO_ERROR       by  4103;  /* Windows; Linux: 4, macOS: 4103  */
 
 %replace TCP_NODELAY    by     1;  /* portable                 */
 
@@ -290,7 +292,10 @@ dcl errno fixed bin(31) external;
 %replace NETOPT_NODELAY    by 2;  /* TCP_NODELAY  */
 
 /* --- send/recv flag: nonblocking ------------------------------ */
-%replace MSG_DONTWAIT  by 128;    /* darwin; Linux: 64 */
+/* Winsock has no MSG_DONTWAIT equivalent; nonblocking is set via
+ * ioctlsocket(FIONBIO) in c_bridge.c. Passing 0 to Winsock
+ * send/recv is a safe no-op flag. */
+%replace MSG_DONTWAIT  by 0;      /* Windows no-op; Linux: 64, macOS: 128 */
 
 /* --- default buffer capacities -------------------------------- */
 %replace NET_BUF_CAP   by 4096;
@@ -298,13 +303,16 @@ dcl errno fixed bin(31) external;
 
 /* --- server connection pool ------------------------------------ */
 %replace NET_MAX_CLIENTS by 1024;
-/* errno-darwin.inc - POSIX errno constants as %replace (darwin reference).
+/* errno-windows.inc - POSIX errno constants as %replace (Windows reference).
  *
- * Values are macOS (arm64). Linux values are noted for portability.
- * Only the subset relevant to sockets is defined here; add more
- * as needed. This file is copied over include/errno.inc at CMake
- * configure time when LIBSOCK_PLATFORM=darwin (the default on macOS);
- * see CMakeLists.txt.
+ * Values match the errno normalization in source/c_bridge.c (WSA codes
+ * translated to the LNX_* table, which equals the darwin table below).
+ * This file is copied over include/errno.inc at CMake configure time
+ * when LIBSOCK_PLATFORM=windows; see CMakeLists.txt.
+ *
+ * Windows getaddrinfo returns raw WSA error codes via ws2tcpip.h;
+ * EAI_* codes are not defined there and mapping them is out of scope
+ * (see the pre-existing mismatch in sock_getaddrinfo).
  */
 
 %replace EPERM        by   1;  /* Operation not permitted        */
@@ -312,7 +320,7 @@ dcl errno fixed bin(31) external;
 %replace EINTR        by   4;  /* Interrupted system call        */
 %replace EBADF        by   9;  /* Bad file descriptor            */
 %replace ECHILD       by  10;  /* No child processes             */
-%replace EAGAIN       by  35;  /* Try again (Linux: 11)          */
+%replace EAGAIN       by  35;  /* Try again                      */
 %replace ENOMEM       by  12;  /* Out of memory                  */
 %replace EACCES       by  13;  /* Permission denied              */
 %replace EFAULT       by  14;  /* Bad address                    */
@@ -333,17 +341,5 @@ dcl errno fixed bin(31) external;
 %replace EHOSTUNREACH by  65;  /* No route to host               */
 %replace EINPROGRESS  by  36;  /* Operation now in progress      */
 
-/*--- getaddrinfo(2) error codes (EAI_*) ---
- * Returned by libc getaddrinfo (POSIX); not errno values.
- * sock_getaddrinfo maps them to errno. Values are darwin;
- * Linux values are noted in each comment.                */
-%replace EAI_BADFLAGS   by  3; /* darwin; Linux: -1   */
-%replace EAI_AGAIN      by  2; /* darwin; Linux: -3   */
-%replace EAI_FAIL       by  4; /* darwin; Linux: -4   */
-%replace EAI_FAMILY     by  5; /* darwin; Linux: -6   */
-%replace EAI_MEMORY     by  6; /* darwin; Linux: -10  */
-%replace EAI_NONAME     by  8; /* darwin; Linux: -2   */
-%replace EAI_SERVICE    by  9; /* darwin; Linux: -8   */
-%replace EAI_SOCKTYPE   by 10; /* darwin; Linux: -7   */
-%replace EAI_SYSTEM     by 11; /* darwin; Linux: -11  */
-%replace EAI_OVERFLOW   by 14; /* darwin; Linux: -12  */
+/* Windows: EAI_* constants not defined in ws2tcpip.h (raw WSA codes).
+ * Left intentionally undefined here. */

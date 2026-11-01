@@ -1,15 +1,15 @@
 # libsock — CMake build (portable: Linux, macOS, Windows).
 #
 # Layout:
-#   lib sock        <- source/c_bridge.c [+ compiled source/sock.pli if the PL/I
+#   lib sock        <- compiled source/${LIBSOCK_PLI_SUBDIR}/sock.pli [if the PL/I
 #                      compiler is available]  (static lib, installed with headers)
 #   include/sock.inc<- cmake-formed self-contained installable interface
-#                      (sock_* declarations + c_bridge/type_defs/errno inlined,
+#                      (sock_* declarations + type_defs/errno inlined,
 #                       no %include dependencies)
 #
 # The PL/I module is optional: pli-llvm's `pli` compiler is usually absent on
-# Windows, so when it is not found the C bridge still builds. Point CMake at the
-# PL/I compiler with -DPLI_EXECUTABLE=... or -DPLI_LLVM=...
+# Windows, so when it is not found only an empty stub lib is produced. Point CMake
+# at the PL/I compiler with -DPLI_EXECUTABLE=... or -DPLI_LLVM=...
 cmake_minimum_required(VERSION 3.16)
 project(libsock LANGUAGES C VERSION 0.1.0)
 
@@ -29,14 +29,15 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib)
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lib"
      "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
-# ---------------------------------------------------------------- C bridge
-# On POSIX (Linux/macOS) no C source is compiled: c_* symbols resolve
-# to libc directly via pli-llvm's external() bindings. On Windows,
-# source/c_bridge.c provides c_* implementations wrapping Winsock2.
+# ---------------------------------------------------------------- C library
+# No C bridge is compiled on any platform (model B): sock_posix/sock_windows
+# call libc / Winsock2 directly via PL/I external() FFI.  ws2_32 is still
+# linked on Windows so the direct Winsock2 calls resolve.  sock_stub.c keeps
+# the static library non-empty and, on Windows, defines the errno storage.
 if(WIN32)
-  add_library(sock STATIC source/c_bridge.c)
+  add_library(sock STATIC source/sock_stub.c)
 else()
-  add_library(sock STATIC)
+  add_library(sock STATIC source/sock_stub.c)
 endif()
 add_library(libsock::sock ALIAS sock)
 set_target_properties(sock PROPERTIES LINKER_LANGUAGE C)
@@ -71,7 +72,8 @@ endif()
 # platform/type_defs-<platform>.inc. CMake copies the selected variant into
 # ${CMAKE_CURRENT_BINARY_DIR}/include/ at configure time (file(COPY), no
 # build custom commands), so %include errno / %include type_defs in
-# source/sock.pli resolve to the platform copy via include ordering below.
+# source/${LIBSOCK_PLI_SUBDIR}/sock.pli resolve to the platform copy via
+# include ordering below.
 if(APPLE)
   set(LIBSOCK_PLATFORM darwin)
 elseif(WIN32)
@@ -80,6 +82,16 @@ else()
   set(LIBSOCK_PLATFORM linux)
 endif()
 set(LIBSOCK_PLATFORM "${LIBSOCK_PLATFORM}" CACHE STRING "Target platform for errno/type_defs constants (darwin/linux/windows)")
+
+# Select the PL/I socket variant by platform: posix for darwin/linux,
+# windows for windows.  Each variant calls its platform's socket calls
+# directly (model B: no C bridge compiled).
+if(LIBSOCK_PLATFORM STREQUAL "windows")
+  set(LIBSOCK_PLI_SUBDIR windows)
+else()
+  set(LIBSOCK_PLI_SUBDIR posix)
+endif()
+set(LIBSOCK_PLI_SUBDIR "${LIBSOCK_PLI_SUBDIR}" CACHE STRING "PL/I socket variant subdirectory (posix/windows)")
 set(LIBSOCK_TYPE_DEFS_INC "${CMAKE_CURRENT_SOURCE_DIR}/platform/type_defs-${LIBSOCK_PLATFORM}.inc")
 set(LIBSOCK_ERRNO_INC     "${CMAKE_CURRENT_SOURCE_DIR}/platform/errno-${LIBSOCK_PLATFORM}.inc")
 if(NOT EXISTS "${LIBSOCK_TYPE_DEFS_INC}")
@@ -97,7 +109,6 @@ file(READ "${LIBSOCK_ERRNO_INC}" _LIBSOCK_ERRNO_CONTENT)
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/include/errno.inc" "${_LIBSOCK_ERRNO_CONTENT}")
 
 set(LIBSOCK_PLI_INCLUDES
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/c_bridge.inc"
   "${LIBSOCK_TYPE_DEFS_INC}"
   "${LIBSOCK_ERRNO_INC}"
   "${CMAKE_CURRENT_BINARY_DIR}/include/type_defs.inc"
@@ -113,13 +124,17 @@ if(LIBSOCK_HAVE_PLI)
   add_custom_command(
     OUTPUT "${LIBSOCK_PLI_OBJ_SOCK}"
     COMMAND "${PLI_EXECUTABLE}" ${_pli_flags}
-      -c "${CMAKE_CURRENT_SOURCE_DIR}/source/sock.pli"
+      -c "${CMAKE_CURRENT_SOURCE_DIR}/source/${LIBSOCK_PLI_SUBDIR}/sock.pli"
       -I "${CMAKE_CURRENT_BINARY_DIR}/include"
       -I "${CMAKE_CURRENT_SOURCE_DIR}/include"
+      -I "${CMAKE_CURRENT_SOURCE_DIR}/source"
       -o "${LIBSOCK_PLI_OBJ_SOCK}"
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/source/sock.pli" ${LIBSOCK_PLI_INCLUDES}
+    DEPENDS
+      "${CMAKE_CURRENT_SOURCE_DIR}/source/${LIBSOCK_PLI_SUBDIR}/sock.pli"
+      "${CMAKE_CURRENT_SOURCE_DIR}/source/sock_common.inc"
+      ${LIBSOCK_PLI_INCLUDES}
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    COMMENT "PL/I compiler: compiling source/sock.pli"
+    COMMENT "PL/I compiler: compiling source/${LIBSOCK_PLI_SUBDIR}/sock.pli"
     VERBATIM)
   target_sources(sock PRIVATE "${LIBSOCK_PLI_OBJ_SOCK}")
   message(STATUS "libsock: PL/I compiler found (${PLI_EXECUTABLE}), PL/I module enabled")
@@ -154,7 +169,6 @@ install(TARGETS sock EXPORT libsock-targets
   ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
   LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 install(FILES
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/c_bridge.inc"
   "${CMAKE_CURRENT_SOURCE_DIR}/platform/type_defs-darwin.inc"
   "${CMAKE_CURRENT_SOURCE_DIR}/platform/type_defs-linux.inc"
   "${CMAKE_CURRENT_SOURCE_DIR}/platform/type_defs-windows.inc"

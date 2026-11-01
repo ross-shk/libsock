@@ -1,19 +1,20 @@
  /* sock.inc - libnet socket compatibility layer interface.
   *
   * Module:  sock
-  * Purpose: Declare the sock_* procedures (implemented in
-  *          source/sock.pli) that provide thin PL/I wrappers over
-  *          the raw libc c_* bindings declared in c_bridge.inc.
-  *
-  * On POSIX (Linux/macOS) c_* resolves to libc symbols directly via
-  * external('socket') etc.; no C source is compiled.  On Windows,
-  * source/c_bridge.c provides the c_* implementations wrapping
-  * Winsock2.
-  *
-  * This include transitively pulls in c_bridge.inc so callers
-  * (e.g. net.pli) get the errno variable and c_bridge constants;
-  * net.pli can therefore replace %include c_bridge with %include sock.
-  */
+ * Purpose: Declare the sock_* procedures (implemented in
+ *          source/posix/sock.pli on POSIX and source/windows/sock.pli
+ *          on Windows) that provide thin PL/I wrappers over the raw
+ *          platform socket calls.  The PL/I interface is identical on
+ *          both platforms; only the underlying calls differ.
+ *
+ * On POSIX (Linux/macOS) each sock_* procedure calls libc directly
+ * via external('socket') etc.; no C source is compiled.  On Windows,
+ * each sock_* procedure calls Winsock2 directly via external(), with
+ * a private fd->SOCKET table held in source/windows/sock.pli.
+ *
+ * This include pulls in type_defs + errno so callers
+ * (e.g. net.pli) get the errno variable and socket constants.
+ */
 
  %include type_defs;
  %include errno;

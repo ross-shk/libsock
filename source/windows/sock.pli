@@ -1,0 +1,748 @@
+/* sock.pli - Windows (Winsock2) socket compatibility layer (PL/I implementation).
+ *
+ * Module:  sock
+ * Purpose: Implement sock_* procedures as thin PL/I wrappers over the raw
+ *          Winsock2 functions invoked directly via external() FFI.  No C
+ *          source is compiled on Windows.  SOCKET handles are pointer-sized
+ *          and cannot fit in a fixed bin(31) fd, so a private fd->SOCKET
+ *          table maps the public 32-bit fd to a SOCKET pointer held in
+ *          WS_TABLE.
+ *
+ * Error handling: sock_* procedures return raw values (0 on success,
+ * -1 on error) and set errno.  Winsock error codes are translated to POSIX
+ * errno values.  Condition raising is the responsibility of the net layer
+ * (source/net.pli).
+ *
+ * Assumptions / risks (validate with the actual pli-llvm toolchain):
+ *   - external() procedures returning a pointer (SOCKET) are supported.
+ *   - errno storage: `dcl errno fixed bin(31) external;` is declared via
+ *     type_defs; PL/I tentative definition of the external errno is assumed.
+ *     If the linker reports an undefined errno, add an explicit errno
+ *     definition here or a minimal C shim.
+ *   - WSAPOLLFD entries are 16 bytes and laid out over a char buffer;
+ *     x86-64 permits unaligned pointer access, so the SOCKET field works.
+ */
+
+ sock: package exports(new_socket, sock_close, sock_shutdown, sock_bind,
+     sock_listen, sock_accept, sock_connect, sock_send, sock_recv,
+     sock_sendto, sock_recvfrom, sock_setsockopt, sock_getsockopt,
+     sock_getpeername, sock_getsockname, sock_setnonblock, sock_poll,
+     sock_poll_multi, sock_getaddrinfo, sock_freeaddrinfo);
+
+/*--- struct sizes ---*/
+%replace ADDRINFO_SIZE by 48;  /* struct addrinfo size, 64-bit */
+%replace POLLFD_BUF_SIZE by 8192;   /* NET_MAX_CLIENTS(1024) * 8 (8-byte pollfd) */
+%replace WSAPOLLFD_BUF_SIZE by 16384; /* NET_MAX_CLIENTS(1024) * 16 (16-byte WSAPOLLFD) */
+%replace HOST_BUF_SIZE by 257;       /* NET_HOST_MAX(256) + 1 */
+%include sock_common;
+%include type_defs;
+%include errno;
+
+/*--- struct layouts for PL/I-side construction/parsing ---*/
+
+/* WSAPOLLFD (16 bytes on 64-bit Windows):
+ *   fd:     SOCKET (pointer) offset 0
+ *   events: SHORT   offset 8
+ *   revents:SHORT   offset 10
+ *   pad:    SHORT   offset 12  (alignment to 16) */
+
+/*--- fd -> SOCKET table (SOCKET is pointer-sized, fd is fixed bin(31)) ---*/
+dcl WS_TABLE (NET_MAX_CLIENTS) pointer;
+dcl WS_USED (NET_MAX_CLIENTS) fixed bin(31);
+dcl WS_READY fixed bin(31) init(0);
+
+/* Winsock error codes (WSA*). */
+%replace WSAEINTR        by 10004;
+%replace WSAEACCES       by 10013;
+%replace WSAEFAULT       by 10014;
+%replace WSAEINVAL       by 10022;
+%replace WSAEMFILE       by 10024;
+%replace WSAEWOULDBLOCK  by 10035;
+%replace WSAEINPROGRESS  by 10036;
+%replace WSAEALREADY     by 10037;
+%replace WSAENOTSOCK     by 10038;
+%replace WSAEDESTADDRREQ by 10039;
+%replace WSAEMSGSIZE     by 10040;
+%replace WSAEADDRINUSE   by 10048;
+%replace WSAEADDRNOTAVAIL by 10049;
+%replace WSAENETDOWN     by 10050;
+%replace WSAENETUNREACH  by 10051;
+%replace WSAENETRESET    by 10052;
+%replace WSAECONNABORTED by 10053;
+%replace WSAECONNRESET   by 10054;
+%replace WSAEDISCON      by 10101;
+%replace WSAEHOSTDOWN    by 10064;
+%replace WSAEHOSTUNREACH by 10065;
+%replace WSAENOBUFS      by 10055;
+%replace WSAEISCONN      by 10056;
+%replace WSAENOTCONN     by 10057;
+%replace WSAESHUTDOWN    by 10058;
+%replace WSAETOOMANYREFS by 10059;
+%replace WSAEUSERS       by 10068;
+%replace WSAEDQUOT       by 10093;
+%replace WSAETIMEDOUT    by 10060;
+%replace WSAECONNREFUSED by 10061;
+%replace WSAELOOP        by 10062;
+%replace WSAENAMETOOLONG by 10063;
+%replace WSAENOTEMPTY    by 10066;
+%replace WSAESTALE       by 10070;
+%replace WSAEREMOTE      by 10071;
+%replace WSAEPROCLIM     by 10067;
+%replace WSASYSNOTREADY  by 10091;
+%replace WSATRY_AGAIN    by 10093;
+%replace WSAHOST_NOT_FOUND by 11001;
+%replace WSANO_DATA      by 11004;
+
+/* ioctlsocket command for nonblocking I/O.  Winsock defines FIONBIO as
+ * 0x8004667E, which does not fit in a signed fixed bin(31); the signed
+ * value -2146435010 has the identical bit pattern. */
+%replace FIONBIO by -2146435010;
+
+/*--- raw Winsock2 bindings (direct FFI, no C bridge) ---*/
+
+dcl c_WSAStartup entry (fixed bin(31), pointer)
+     returns (fixed bin(31))
+     options (linkage(system)) external ('WSAStartup');
+
+dcl c_WSAGetLastError entry ()
+     returns (fixed bin(31))
+     options (linkage(system)) external ('WSAGetLastError');
+
+dcl c_socket entry (fixed bin(31), fixed bin(31), fixed bin(31))
+     returns (pointer)
+     options (linkage(system)) external ('socket');
+
+dcl c_closesocket entry (pointer)
+     returns (fixed bin(31))
+     options (linkage(system)) external ('closesocket');
+
+dcl c_shutdown entry (pointer, fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('shutdown');
+
+dcl c_bind entry (pointer, char(*), fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('bind');
+
+dcl c_listen entry (pointer, fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('listen');
+
+dcl c_accept entry (pointer, pointer, pointer)
+     returns (pointer)
+     options (linkage(system)) external ('accept');
+
+dcl c_connect entry (pointer, char(*), fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('connect');
+
+dcl c_send entry (pointer, char(*), fixed bin(31),
+    fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('send');
+
+dcl c_recv entry (pointer, char(*), fixed bin(31),
+    fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('recv');
+
+dcl c_sendto entry (pointer, char(*), fixed bin(31),
+    fixed bin(31), char(*), fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('sendto');
+
+dcl c_recvfrom entry (pointer, char(*), fixed bin(31),
+    fixed bin(31), char(*), pointer)
+     returns (fixed bin(31))
+     options (linkage(system)) external ('recvfrom');
+
+dcl c_setsockopt entry (pointer, fixed bin(31), fixed bin(31),
+     pointer, fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('setsockopt');
+
+dcl c_getsockopt entry (pointer, fixed bin(31), fixed bin(31),
+     pointer, pointer)
+     returns (fixed bin(31))
+     options (linkage(system)) external ('getsockopt');
+
+dcl c_getpeername entry (pointer, char(*), pointer)
+     returns (fixed bin(31))
+     options (linkage(system)) external ('getpeername');
+
+dcl c_getsockname entry (pointer, char(*), pointer)
+     returns (fixed bin(31))
+     options (linkage(system)) external ('getsockname');
+
+dcl c_ioctlsocket entry (pointer, fixed bin(31), pointer)
+     returns (fixed bin(31))
+     options (linkage(system)) external ('ioctlsocket');
+
+dcl c_WSAPoll entry (pointer, fixed bin(31), fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('WSAPoll');
+
+dcl c_getaddrinfo entry (pointer, pointer, pointer, pointer)
+     returns (fixed bin(31))
+     options (linkage(system)) external ('getaddrinfo');
+
+dcl c_freeaddrinfo entry (pointer)
+     options (linkage(system)) external ('freeaddrinfo');
+
+/*--- fd table helpers ---*/
+
+ws_lookup: procedure (fd) returns (pointer);
+    dcl fd fixed bin(31);
+    dcl i fixed bin(31);
+    i = fd - 1;
+    if i < 0 | i >= NET_MAX_CLIENTS | WS_USED(i) = 0 then return (null());
+    return (WS_TABLE(i));
+end ws_lookup;
+
+ws_alloc: procedure (s) returns (fixed bin(31));
+    dcl s pointer;
+    dcl i fixed bin(31);
+    do i = 1 to NET_MAX_CLIENTS;
+        if WS_USED(i) = 0 then do;
+            WS_USED(i) = 1;
+            WS_TABLE(i) = s;
+            return (i);
+        end;
+    end;
+    return (-1);
+end ws_alloc;
+
+ws_drop: procedure (fd);
+    dcl fd fixed bin(31);
+    dcl i fixed bin(31);
+    i = fd - 1;
+    if i >= 0 & i < NET_MAX_CLIENTS then do;
+        WS_USED(i) = 0;
+        WS_TABLE(i) = null();
+    end;
+end ws_drop;
+
+/* Translate a Winsock error code to a POSIX errno value. */
+wsa_to_errno: procedure (wsa) returns (fixed bin(31));
+    dcl wsa fixed bin(31);
+    if wsa = 0 then return (0);
+    if wsa = WSAEINTR then return (EINTR);
+    if wsa = WSAEACCES then return (EACCES);
+    if wsa = WSAEFAULT then return (EFAULT);
+    if wsa = WSAEINVAL then return (EINVAL);
+    if wsa = WSAEMFILE then return (EMFILE);
+    if wsa = WSAEWOULDBLOCK then return (EAGAIN);
+    if wsa = WSAEINPROGRESS then return (EINPROGRESS);
+    if wsa = WSAEALREADY then return (EINPROGRESS);
+    if wsa = WSAENOTSOCK then return (ENOTSOCK);
+    if wsa = WSAEDESTADDRREQ then return (EINVAL);
+    if wsa = WSAEMSGSIZE then return (EMSGSIZE);
+    if wsa = WSAEADDRINUSE then return (EADDRINUSE);
+    if wsa = WSAEADDRNOTAVAIL then return (EADDRNOTAVAIL);
+    if wsa = WSAENETDOWN | wsa = WSAENETUNREACH then return (ENETUNREACH);
+    if wsa = WSAENETRESET | wsa = WSAECONNABORTED |
+       wsa = WSAECONNRESET | wsa = WSAEDISCON then return (ECONNRESET);
+    if wsa = WSAENOBUFS then return (ENOBUFS);
+    if wsa = WSAEISCONN | wsa = WSAESHUTDOWN then return (EPIPE);
+    if wsa = WSAENOTCONN then return (ENOTCONN);
+    if wsa = WSAETOOMANYREFS | wsa = WSAEUSERS | wsa = WSAEDQUOT
+       then return (ENOMEM);
+    if wsa = WSAETIMEDOUT then return (ETIMEDOUT);
+    if wsa = WSAECONNREFUSED then return (ECONNREFUSED);
+    if wsa = WSAELOOP | wsa = WSAENAMETOOLONG | wsa = WSAENOTEMPTY |
+       wsa = WSAESTALE | wsa = WSAEREMOTE then return (EINVAL);
+    if wsa = WSAEHOSTDOWN then return (EHOSTDOWN);
+    if wsa = WSAEHOSTUNREACH then return (EHOSTUNREACH);
+    if wsa = WSAEPROCLIM then return (EMFILE);
+    if wsa = WSASYSNOTREADY | wsa = WSATRY_AGAIN then return (EAGAIN);
+    if wsa = WSAHOST_NOT_FOUND | wsa = WSANO_DATA then return (ENOENT);
+    return (EINVAL);
+end wsa_to_errno;
+
+/* Lazy Winsock initialisation: call WSAStartup on first use. */
+ws_ensure: procedure returns (fixed bin(31));
+    dcl wsadata_buf char(512);
+    dcl rc fixed bin(31);
+    if WS_READY = 1 then return (0);
+    rc = c_WSAStartup(514, addr(wsadata_buf));  /* MAKEWORD(2,2) = 514 */
+    if rc ^= 0 then do;
+        errno = wsa_to_errno(c_WSAGetLastError());
+        return (-1);
+    end;
+    WS_READY = 1;
+    return (0);
+end ws_ensure;
+
+/*===============================================================*/
+/* Socket lifecycle                                              */
+/*===============================================================*/
+
+ new_socket: procedure (family, type, proto) returns (fixed bin(31));
+    dcl family fixed bin(31);
+    dcl type   fixed bin(31);
+    dcl proto  fixed bin(31);
+    dcl s pointer;
+    dcl fd fixed bin(31);
+    if ws_ensure() < 0 then return (-1);
+    s = c_socket(family, type, proto);
+    if s = null() then do;
+        errno = wsa_to_errno(c_WSAGetLastError());
+        return (-1);
+    end;
+    fd = ws_alloc(s);
+    if fd < 0 then do;
+        call c_closesocket(s);
+        errno = EMFILE;
+        return (-1);
+    end;
+    return (fd);
+ end new_socket;
+
+ sock_close: procedure (fd) returns (fixed bin(31));
+   dcl fd fixed bin(31);
+   dcl s pointer;
+   s = ws_lookup(fd);
+   if s = null() then do; errno = EBADF; return (-1); end;
+    call ws_drop(fd);
+    if c_closesocket(s) ^= 0 then do;
+        errno = wsa_to_errno(c_WSAGetLastError()); return (-1);
+    end;
+   return (0);
+ end sock_close;
+
+sock_shutdown: procedure (fd, how) returns (fixed bin(31));
+    dcl fd fixed bin(31);
+    dcl how fixed bin(31);
+    dcl s pointer;
+    s = ws_lookup(fd);
+    if s = null() then do; errno = EBADF; return (-1); end;
+    if c_shutdown(s, how) ^= 0 then do;
+        errno = wsa_to_errno(c_WSAGetLastError()); return (-1);
+    end;
+    return (0);
+end sock_shutdown;
+
+sock_bind: procedure (fd, addr_buf) returns (fixed bin(31));
+    dcl fd fixed bin(31);
+    dcl addr_buf char(*);
+    dcl s pointer;
+    s = ws_lookup(fd);
+    if s = null() then do; errno = EBADF; return (-1); end;
+    if c_bind(s, addr_buf, length(addr_buf)) ^= 0 then do;
+        errno = wsa_to_errno(c_WSAGetLastError()); return (-1);
+    end;
+    return (0);
+end sock_bind;
+
+sock_listen: procedure (fd, backlog) returns (fixed bin(31));
+    dcl fd fixed bin(31);
+    dcl backlog fixed bin(31);
+    dcl s pointer;
+    s = ws_lookup(fd);
+    if s = null() then do; errno = EBADF; return (-1); end;
+    if c_listen(s, backlog) ^= 0 then do;
+        errno = wsa_to_errno(c_WSAGetLastError()); return (-1);
+    end;
+    return (0);
+end sock_listen;
+
+/* accept with NULL sockaddr/addrlen (simpler than c_accept). */
+sock_accept: procedure (fd) returns (fixed bin(31));
+    dcl fd fixed bin(31);
+    dcl s pointer;
+    dcl ns pointer;
+    dcl nfd fixed bin(31);
+    s = ws_lookup(fd);
+    if s = null() then do; errno = EBADF; return (-1); end;
+    ns = c_accept(s, null(), null());
+    if ns = null() then do;
+        errno = wsa_to_errno(c_WSAGetLastError());
+        return (-1);
+    end;
+    nfd = ws_alloc(ns);
+    if nfd < 0 then do;
+        call c_closesocket(ns);
+        errno = EMFILE;
+        return (-1);
+    end;
+    return (nfd);
+end sock_accept;
+
+/*===============================================================*/
+/* Connect / data transfer                                       */
+/*===============================================================*/
+
+sock_connect: procedure (fd, addr_buf) returns (fixed bin(31));
+    dcl fd fixed bin(31);
+    dcl addr_buf char(*);
+    dcl s pointer;
+    s = ws_lookup(fd);
+    if s = null() then do; errno = EBADF; return (-1); end;
+    if c_connect(s, addr_buf, length(addr_buf)) ^= 0 then do;
+        errno = wsa_to_errno(c_WSAGetLastError()); return (-1);
+    end;
+    return (0);
+end sock_connect;
+
+sock_send: procedure (fd, buf, flags) returns (fixed bin(31));
+    dcl fd fixed bin(31);
+    dcl buf char(*);
+    dcl flags fixed bin(31);
+    dcl s pointer;
+    dcl n fixed bin(31);
+    s = ws_lookup(fd);
+    if s = null() then do; errno = EBADF; return (-1); end;
+    n = c_send(s, buf, length(buf), flags);
+    if n < 0 then errno = wsa_to_errno(c_WSAGetLastError());
+    return (n);
+end sock_send;
+
+sock_recv: procedure (fd, buf, flags) returns (fixed bin(31));
+    dcl fd fixed bin(31);
+    dcl buf char(*);
+    dcl flags fixed bin(31);
+    dcl s pointer;
+    dcl n fixed bin(31);
+    s = ws_lookup(fd);
+    if s = null() then do; errno = EBADF; return (-1); end;
+    n = c_recv(s, buf, length(buf), flags);
+    if n < 0 then errno = wsa_to_errno(c_WSAGetLastError());
+    return (n);
+end sock_recv;
+
+sock_sendto: procedure (fd, buf, flags, addr_buf)
+    returns (fixed bin(31));
+    dcl fd fixed bin(31);
+    dcl buf char(*);
+    dcl flags fixed bin(31);
+    dcl addr_buf char(*);
+    dcl s pointer;
+    dcl r fixed bin(31);
+    s = ws_lookup(fd);
+    if s = null() then do; errno = EBADF; return (-1); end;
+    r = c_sendto(s, buf, length(buf), flags,
+                 addr_buf, length(addr_buf));
+    if r < 0 then errno = wsa_to_errno(c_WSAGetLastError());
+    return (r);
+end sock_sendto;
+
+sock_recvfrom: procedure (fd, buf, flags, addr_buf, addrlen_ptr)
+    returns (fixed bin(31));
+    dcl fd fixed bin(31);
+    dcl buf char(*);
+    dcl flags fixed bin(31);
+    dcl addr_buf char(*);
+    dcl addrlen_ptr pointer;
+    dcl s pointer;
+    dcl r fixed bin(31);
+    s = ws_lookup(fd);
+    if s = null() then do; errno = EBADF; return (-1); end;
+    r = c_recvfrom(s, buf, length(buf), flags, addr_buf, addrlen_ptr);
+    if r < 0 then errno = wsa_to_errno(c_WSAGetLastError());
+    return (r);
+end sock_recvfrom;
+
+/*===============================================================*/
+/* Socket options                                                */
+/*===============================================================*/
+
+sock_setsockopt: procedure (fd, level, optname, value_ptr)
+    returns (fixed bin(31));
+    dcl fd fixed bin(31);
+    dcl level fixed bin(31);
+    dcl optname fixed bin(31);
+    dcl value_ptr char(*);
+    dcl s pointer;
+    s = ws_lookup(fd);
+    if s = null() then do; errno = EBADF; return (-1); end;
+    if c_setsockopt(s, level, optname, addr(value_ptr),
+        length(value_ptr)) ^= 0 then do;
+        errno = wsa_to_errno(c_WSAGetLastError()); return (-1);
+    end;
+    return (0);
+end sock_setsockopt;
+
+sock_getsockopt: procedure (fd, level, optname, value_ptr, optlen_ptr)
+    returns (fixed bin(31));
+    dcl fd fixed bin(31);
+    dcl level fixed bin(31);
+    dcl optname fixed bin(31);
+    dcl value_ptr pointer;
+    dcl optlen_ptr pointer;
+    dcl s pointer;
+    s = ws_lookup(fd);
+    if s = null() then do; errno = EBADF; return (-1); end;
+    if c_getsockopt(s, level, optname, value_ptr, optlen_ptr) ^= 0 then do;
+        errno = wsa_to_errno(c_WSAGetLastError()); return (-1);
+    end;
+    return (0);
+end sock_getsockopt;
+
+/*===============================================================*/
+/* Address queries                                               */
+/*===============================================================*/
+
+sock_getpeername: procedure (fd, addr_buf, addrlen_ptr)
+    returns (fixed bin(31));
+    dcl fd fixed bin(31);
+    dcl addr_buf char(*);
+    dcl addrlen_ptr pointer;
+    dcl s pointer;
+    s = ws_lookup(fd);
+    if s = null() then do; errno = EBADF; return (-1); end;
+    if c_getpeername(s, addr_buf, addrlen_ptr) ^= 0 then do;
+        errno = wsa_to_errno(c_WSAGetLastError()); return (-1);
+    end;
+    return (0);
+end sock_getpeername;
+
+sock_getsockname: procedure (fd, addr_buf, addrlen_ptr)
+    returns (fixed bin(31));
+    dcl fd fixed bin(31);
+    dcl addr_buf char(*);
+    dcl addrlen_ptr pointer;
+    dcl s pointer;
+    s = ws_lookup(fd);
+    if s = null() then do; errno = EBADF; return (-1); end;
+    if c_getsockname(s, addr_buf, addrlen_ptr) ^= 0 then do;
+        errno = wsa_to_errno(c_WSAGetLastError()); return (-1);
+    end;
+    return (0);
+end sock_getsockname;
+
+/*===============================================================*/
+/* Nonblocking I/O                                               */
+/*===============================================================*/
+
+/* Set or clear nonblocking mode via ioctlsocket(FIONBIO).
+ * mode = 1 enables nonblocking, 0 disables. */
+sock_setnonblock: procedure (fd, on) returns (fixed bin(31));
+    dcl fd fixed bin(31);
+    dcl on fixed bin(31);
+    dcl s pointer;
+    dcl mode fixed bin(31);
+    dcl rc fixed bin(31);
+    s = ws_lookup(fd);
+    if s = null() then do; errno = EBADF; return (-1); end;
+    mode = on;
+    rc = c_ioctlsocket(s, FIONBIO, addr(mode));
+    if rc ^= 0 then do;
+        errno = wsa_to_errno(c_WSAGetLastError()); return (-1);
+    end;
+    return (0);
+end sock_setnonblock;
+
+/*===============================================================*/
+/* WSAPoll - single and multi-fd                                 */
+/*===============================================================*/
+
+/* Poll a single socket for readiness.
+ * Translates the libnet event mask (POLLIN=1, POLLOUT=2) to Winsock
+ * poll bits (POLLIN, POLLOUT), calls WSAPoll with nfds=1.
+ * Returns the count of ready descriptors (0 = timed out) or -1 on failure. */
+sock_poll: procedure (fd, events, ms) returns (fixed bin(31));
+    dcl fd fixed bin(31);
+    dcl events fixed bin(31);
+    dcl ms fixed bin(31);
+    dcl s pointer;
+    dcl wpf_buf char(16);
+    dcl wpfb pointer;
+    dcl 1 wpfd based(wpfb) unaligned,
+        2 wpfd_fd      pointer,
+        2 wpfd_events  fixed bin(15),
+        2 wpfd_revents fixed bin(15),
+        2 wpfd_pad     fixed bin(15);
+    dcl c_events fixed bin(31);
+    dcl ready fixed bin(31);
+
+    s = ws_lookup(fd);
+    if s = null() then do; errno = EBADF; return (-1); end;
+
+    wpf_buf = low(16);
+    wpfb = addr(wpf_buf);
+    wpfd.wpfd_fd = s;
+    wpfd.wpfd_events = 0;
+    wpfd.wpfd_revents = 0;
+    c_events = 0;
+    if mod(events, 2) ^= 0 then c_events = c_events + 1;   /* POLLIN */
+    if mod(events / 2, 2) ^= 0 then c_events = c_events + 2; /* POLLOUT */
+    wpfd.wpfd_events = c_events;
+
+    ready = c_WSAPoll(wpfb, 1, ms);
+    if ready < 0 then do;
+        errno = wsa_to_errno(c_WSAGetLastError());
+        return (-1);
+    end;
+    return (ready);
+end sock_poll;
+
+/* Multi-fd poll across an array of fds.
+ * fds_ptr/events_ptr/revents_ptr point to arrays of fixed bin(31)
+ * of length nfds.  Libnet event masks are translated to Winsock poll
+ * bits for input, and revents are translated back to libnet masks for
+ * output.  Returns the count of ready fds (0 = timeout, -1 = error). */
+sock_poll_multi: procedure (fds_ptr, events_ptr, revents_ptr,
+    nfds, ms) returns (fixed bin(31));
+    dcl fds_ptr pointer;
+    dcl events_ptr pointer;
+    dcl revents_ptr pointer;
+    dcl nfds fixed bin(31);
+    dcl ms fixed bin(31);
+    dcl wpf_buf char(WSAPOLLFD_BUF_SIZE);
+    dcl wpfb pointer;
+    dcl 1 wpfd_arr (NET_MAX_CLIENTS) based(wpfb) unaligned,
+        2 wpfd_fd      pointer,
+        2 wpfd_events  fixed bin(15),
+        2 wpfd_revents fixed bin(15),
+        2 wpfd_pad     fixed bin(15);
+    dcl 1 fd_arr based(fds_ptr) unaligned,
+        2 fd_val (NET_MAX_CLIENTS) fixed bin(31);
+    dcl 1 ev_arr based(events_ptr) unaligned,
+        2 ev_val (NET_MAX_CLIENTS) fixed bin(31);
+    dcl 1 rv_arr based(revents_ptr) unaligned,
+        2 rv_val (NET_MAX_CLIENTS) fixed bin(31);
+    dcl i fixed bin(31);
+    dcl s pointer;
+    dcl c_events fixed bin(31);
+    dcl c_revents fixed bin(31);
+    dcl ready fixed bin(31);
+    dcl bad fixed bin(31);
+
+    wpfb = addr(wpf_buf);
+    wpf_buf = low(WSAPOLLFD_BUF_SIZE);
+
+    bad = 0;
+    do i = 1 to nfds;
+        s = ws_lookup(fd_arr.fd_val(i));
+        if s = null() then do;
+            wpfd_arr(i).wpfd_revents = 4;  /* POLLERR */
+            bad = bad + 1;
+            iterate;
+        end;
+        wpfd_arr(i).wpfd_fd = s;
+        wpfd_arr(i).wpfd_revents = 0;
+        c_events = 0;
+        if mod(ev_arr.ev_val(i), 2) ^= 0 then
+            c_events = c_events + 1;   /* POLLIN */
+        if mod(ev_arr.ev_val(i) / 2, 2) ^= 0 then
+            c_events = c_events + 2;   /* POLLOUT */
+        wpfd_arr(i).wpfd_events = c_events;
+    end;
+
+    ready = c_WSAPoll(wpfb, nfds, ms);
+    if ready < 0 then do;
+        errno = wsa_to_errno(c_WSAGetLastError());
+        return (-1);
+    end;
+
+    ready = 0;
+    do i = 1 to nfds;
+        c_revents = wpfd_arr(i).wpfd_revents;
+        rv_arr.rv_val(i) = 0;
+        if mod(c_revents, 2) ^= 0 then
+            rv_arr.rv_val(i) = rv_arr.rv_val(i) + POLLIN;
+        if mod(c_revents / 2, 2) ^= 0 then
+            rv_arr.rv_val(i) = rv_arr.rv_val(i) + POLLOUT;
+        if mod(c_revents / 4, 2) ^= 0 |
+           mod(c_revents / 16, 2) ^= 0 |
+           mod(c_revents / 32, 2) ^= 0 then
+            rv_arr.rv_val(i) = rv_arr.rv_val(i) + 4;
+        if rv_arr.rv_val(i) ^= 0 then ready = ready + 1;
+    end;
+    ready = ready + bad;
+
+    return (ready);
+end sock_poll_multi;
+
+/*===============================================================*/
+/* DNS - getaddrinfo                                             */
+/*===============================================================*/
+
+/* On Windows getaddrinfo returns a raw WSA error code (not EAI_*,
+ * which is undefined in ws2tcpip.h).  Map the WSA code to errno. */
+sock_getaddrinfo: procedure (host, port, addr_buf)
+    returns (fixed bin(31));
+    dcl host char(*);
+    dcl port fixed bin(31);
+    dcl addr_buf char(*);
+    dcl host_buf char(HOST_BUF_SIZE);
+    dcl hints_buf char(ADDRINFO_SIZE);
+    dcl ph pointer;
+    dcl 1 hints based(ph) unaligned,
+        2 ai_flags   fixed bin(31),
+        2 ai_family  fixed bin(31),
+        2 ai_socktype fixed bin(31),
+        2 ai_protocol fixed bin(31),
+        2 ai_addrlen fixed bin(63),
+        2 ai_canonname pointer,
+        2 ai_addr    pointer,
+        2 ai_next    pointer;
+    dcl res_ptr pointer;
+    dcl gai fixed bin(31);
+    dcl i fixed bin(31);
+    dcl n fixed bin(31);
+    dcl p pointer;
+    dcl 1 res_view based(res_ptr) unaligned,
+        2 rai_flags   fixed bin(31),
+        2 rai_family  fixed bin(31),
+        2 rai_socktype fixed bin(31),
+        2 rai_protocol fixed bin(31),
+        2 rai_addrlen fixed bin(63),
+        2 rai_canonname pointer,
+        2 rai_addr    pointer,
+        2 rai_next    pointer;
+    dcl src_buf char(SOCKADDR_IN_SIZE) based(p);
+    dcl port_hi fixed bin(31);
+    dcl port_lo fixed bin(31);
+    dcl header fixed bin(63);
+
+    /* NUL-terminate host in host_buf (getaddrinfo needs C string). */
+    host_buf = low(HOST_BUF_SIZE);
+    n = length(host);
+    if n > NET_HOST_MAX then n = NET_HOST_MAX;
+    do i = 1 to n;
+        substr(host_buf, i, 1) = substr(host, i, 1);
+    end;
+
+    /* Zero hints and set AF_INET / SOCK_STREAM. */
+    hints_buf = low(ADDRINFO_SIZE);
+    ph = addr(hints_buf);
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+
+    gai = c_getaddrinfo(addr(host_buf), null(), ph, addr(res_ptr));
+    if gai ^= 0 then do;
+        /* Map WSA error code to errno. */
+        errno = wsa_to_errno(gai);
+        if res_ptr ^= null() then call c_freeaddrinfo(res_ptr);
+        return (-1);
+    end;
+
+    if res_ptr = null() then do;
+        errno = ENOENT;
+        return (-1);
+    end;
+
+    /* Copy 16 bytes of sockaddr_in from ai_addr to addr_buf. */
+    p = res_view.rai_addr;
+    addr_buf = src_buf;
+
+    /* Overwrite sin_port with requested port (network byte order). */
+    port_hi = mod(port / 256, 256);
+    port_lo = mod(port, 256);
+    header = SOCKADDR_IN_SIZE + AF_INET * 256 +
+             port_hi * 65536 + port_lo * 16777216;
+    phdr = addr(addr_buf);
+    if header >= 2147483648 then header = header - 4294967296;
+    sockaddr_hdr.w0 = header;
+
+    call c_freeaddrinfo(res_ptr);
+    return (0);
+end sock_getaddrinfo;
+
+sock_freeaddrinfo: procedure (ptr);
+    dcl ptr pointer;
+    call c_freeaddrinfo(ptr);
+end sock_freeaddrinfo;
+
+end sock;

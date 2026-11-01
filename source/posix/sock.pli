@@ -1,16 +1,10 @@
-/* sock.pli - libnet socket compatibility layer (PL/I implementation).
+/* sock.pli - POSIX (Linux/macOS) socket compatibility layer (PL/I implementation).
  *
  * Module:  sock
- * Purpose: Implement sock_* procedures as thin PL/I wrappers over the
- *          raw libc c_* bindings declared in c_bridge.inc. Replaces the
- *          C bridge functions (netc_*) that previously lived in
- *          source/c_bridge.c: poll mask translation, nonblock flag
- *          manipulation via fcntl, accept with NULL args, and
- *          getaddrinfo wrapping with port injection.
- *
- * On POSIX (Linux/macOS) c_* resolves to libc directly via external();
- * no C source is compiled into the library.  On Windows,
- * source/c_bridge.c provides c_* implementations wrapping Winsock2.
+ * Purpose: Implement sock_* procedures as thin PL/I wrappers over the raw
+ *          libc system calls invoked directly via external() FFI.  No C
+ *          source is compiled on POSIX; the external() entries bind to libc
+ *          symbols (socket, close, bind, ...) at executable link time.
  *
  * Error handling: sock_* procedures return raw values (0 on success,
  * -1 on error) and let libc set errno.  Condition raising is the
@@ -24,18 +18,16 @@
      sock_poll_multi, sock_getaddrinfo, sock_freeaddrinfo);
 
 /*--- struct sizes ---*/
-%replace ADDRINFO_SIZE by 48;  /* struct addrinfo size, macOS arm64 */
+%replace ADDRINFO_SIZE by 48;  /* struct addrinfo size, 64-bit */
 %replace POLLFD_BUF_SIZE by 8192;   /* NET_MAX_CLIENTS(1024) * 8 */
 %replace HOST_BUF_SIZE by 257;       /* NET_HOST_MAX(256) + 1 */
-%include c_bridge;
+%include sock_common;
 %include type_defs;
 %include errno;
 
-/*===============================================================*/
-/* Struct layouts for PL/I-side construction/parsing             */
-/*===============================================================*/
+/*--- struct layouts for PL/I-side construction/parsing ---*/
 
-/* struct pollfd (8 bytes on macOS/arm64):
+/* struct pollfd (8 bytes on 64-bit):
  *   fd:     int32  offset 0
  *   events: int16  offset 4
  *   revents:int16  offset 6 */
@@ -44,32 +36,99 @@ dcl 1 pollfd_t unaligned,
     2 pfd_events fixed bin(15),
     2 pfd_revents fixed bin(15);
 
-/* struct addrinfo (48 bytes on macOS/arm64):
- *   ai_flags:    int32  offset 0
- *   ai_family:   int32  offset 4
- *   ai_socktype: int32  offset 8
- *   ai_protocol: int32  offset 12
- *   ai_addrlen:  int64  offset 16
- *   ai_canonname: char* offset 24
- *   ai_addr:     char*  offset 32
- *   ai_next:     char*  offset 40 */
-dcl 1 addrinfo_t unaligned,
-    2 ai_flags     fixed bin(31),
-    2 ai_family    fixed bin(31),
-    2 ai_socktype  fixed bin(31),
-    2 ai_protocol  fixed bin(31),
-    2 ai_addrlen   fixed bin(63),
-    2 ai_canonname pointer,
-    2 ai_addr      pointer,
-    2 ai_next      pointer;
+/*--- raw libc bindings (direct FFI, no C bridge) ---*/
 
-/* struct sockaddr_in header (bytes 0-3):
- *   byte 0: sin_len    = SOCKADDR_IN_SIZE (16)
- *   byte 1: sin_family = AF_INET (2)
- *   bytes 2-3: sin_port (network/big-endian) */
-dcl phdr pointer;
-dcl 1 sockaddr_hdr based(phdr) unaligned,
-    2 w0 fixed bin(31);
+dcl c_socket entry (fixed bin(31), fixed bin(31), fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('socket');
+
+dcl c_close entry (fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('close');
+
+dcl c_shutdown entry (fixed bin(31), fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('shutdown');
+
+dcl c_bind entry (fixed bin(31), char(*), fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('bind');
+
+dcl c_listen entry (fixed bin(31), fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('listen');
+
+dcl c_accept entry (fixed bin(31), pointer, pointer)
+     returns (fixed bin(31))
+     options (linkage(system)) external ('accept');
+
+dcl c_connect entry (fixed bin(31), char(*), fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('connect');
+
+dcl c_send entry (fixed bin(31), char(*), fixed bin(31),
+    fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('send');
+
+dcl c_recv entry (fixed bin(31), char(*), fixed bin(31),
+    fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('recv');
+
+dcl c_sendto entry (fixed bin(31), char(*), fixed bin(31),
+    fixed bin(31), char(*), fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('sendto');
+
+dcl c_recvfrom entry (fixed bin(31), char(*), fixed bin(31),
+    fixed bin(31), char(*), pointer)
+     returns (fixed bin(31))
+     options (linkage(system)) external ('recvfrom');
+
+dcl c_setsockopt entry (fixed bin(31), fixed bin(31), fixed bin(31),
+     pointer, fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('setsockopt');
+
+dcl c_getsockopt entry (fixed bin(31), fixed bin(31), fixed bin(31),
+     pointer, pointer)
+     returns (fixed bin(31))
+     options (linkage(system)) external ('getsockopt');
+
+dcl c_getpeername entry (fixed bin(31), char(*), pointer)
+     returns (fixed bin(31))
+     options (linkage(system)) external ('getpeername');
+
+dcl c_getsockname entry (fixed bin(31), char(*), pointer)
+     returns (fixed bin(31))
+     options (linkage(system)) external ('getsockname');
+
+dcl c_fcntl entry (fixed bin(31), fixed bin(31), fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('fcntl');
+
+dcl c_poll entry (ptr, fixed bin(31), fixed bin(31))
+     returns (fixed bin(31))
+     options (linkage(system)) external ('poll');
+
+dcl c_getaddrinfo entry (pointer, pointer, pointer, pointer)
+     returns (fixed bin(31))
+     options (linkage(system)) external ('getaddrinfo');
+
+dcl c_freeaddrinfo entry (pointer)
+     options (linkage(system)) external ('freeaddrinfo');
+
+/*--- fcntl constants (POSIX) ---*/
+%replace F_GETFL    by  3;
+%replace F_SETFL    by  4;
+
+/*--- libc poll(2) event bits ---*/
+%replace C_POLLIN   by    1;
+%replace C_POLLOUT  by    4;
+%replace C_POLLERR  by    8;
+%replace C_POLLHUP  by   16;
+%replace C_POLLNVAL by   32;
 
 /*===============================================================*/
 /* Socket lifecycle (thin pass-throughs to libc)                 */

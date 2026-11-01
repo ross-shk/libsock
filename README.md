@@ -6,7 +6,8 @@ A thin socket compatibility layer that provides socket bindings for PL/I program
 
 - **pli-llvm** — modern open-source PL/I compiler targetting LLVM
   - GitHub: [https://github.com/pli-llvm/pli-llvm](https://github.com/pli-llvm/pli-llvm)
-- **C compiler** (clang/gcc/MSVC/MinGW) — for `c_bridge.c` (Windows only)
+- **C compiler** (clang/gcc/MSVC/MinGW) — only needed to link ws2_32 on Windows;
+  no C source is compiled into the library on any platform (model B).
 - **CMake ≥ 3.16** — portable build system (Linux, macOS, Windows)
 
 > **Platform note:** `include/errno.inc` and `include/type_defs.inc` currently
@@ -92,17 +93,19 @@ call sock_close(fd);
 
 ## Architecture
 
-- **C bridge** (`source/c_bridge.c`): the ONLY C — thin syscall wrappers (`c_*` naming) around Winsock2 on Windows. On POSIX, the `c_*` symbols resolve to libc directly via pli-llvm's by-value FFI; no C source is compiled.
-- **PL/I wrappers** (`source/sock.pli`): `sock_*` procedures that wrap the raw `c_*` syscalls with argument translation (e.g. poll mask mapping, `fcntl`-based nonblock control, `getaddrinfo` port injection).
+- **PL/I wrappers — POSIX** (`source/posix/sock.pli`): `sock_*` procedures that call the raw libc socket calls directly via `external()` FFI; no C source is compiled.
+- **PL/I wrappers — Windows** (`source/windows/sock.pli`): `sock_*` procedures that call the raw Winsock2 functions directly via `external()`.  `SOCKET` handles are pointer-sized, so a private fd→SOCKET table maps the public 32-bit fd to a `SOCKET` pointer; Winsock error codes are translated to POSIX errno.
+- **Shared layouts** (`source/sock_common.inc`): struct layouts (`addrinfo_t`, `sockaddr_hdr`) shared by both variants.
+- The `sock_*` procedures wrap the platform calls with argument translation (e.g. poll mask mapping, nonblock control, `getaddrinfo` port injection).  The PL/I interface is identical on both platforms.
 
 ## Layout
 
 | Path | Contents |
 | --- | --- |
-| `source/c_bridge.c` | the ONLY C — thin Winsock2 syscall wrappers (`c_*`) |
-| `source/sock.pli` | PL/I wrappers (`sock_*`) over the raw `c_*` syscalls |
-| `include/sock.inc` | `sock_*` interface declarations (transitively includes `c_bridge.inc`) |
-| `include/c_bridge.inc` | raw `c_*` FFI declarations + `errno`, fcntl/poll constants |
+| `source/posix/sock.pli` | PL/I wrappers (`sock_*`) over libc (Linux/macOS) |
+| `source/windows/sock.pli` | PL/I wrappers (`sock_*`) over Winsock2 (Windows) |
+| `source/sock_common.inc` | shared struct layouts (`addrinfo_t`, `sockaddr_hdr`) |
+| `include/sock.inc` | `sock_*` interface declarations (identical on both platforms) |
 | `include/errno.inc` | POSIX errno constants (`E*` + `EAI_*`) |
 | `include/type_defs.inc` | socket/type constants (`AF_*`, `SOCK_*`, `SOL_SOCKET`, `NET_*`, sizes) |
 
