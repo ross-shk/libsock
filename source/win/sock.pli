@@ -38,6 +38,7 @@
  %replace POLLFD_BUF_SIZE by 8192;   /* NET_MAX_CLIENTS * 8 */
  %replace WSAPOLLFD_BUF_SIZE by 16384; /* NET_MAX_CLIENTS * 16 */
  %replace HOST_BUF_SIZE by 257;       /* NET_HOST_MAX(256) + 1 */
+ %replace RECV_TEMP_SIZE by 8192;    /* temp buffer for recv/recvfrom */
  %include type_defs;
  %include errno;
  %include sock_common;
@@ -392,7 +393,7 @@
 
  sock_send: procedure (fd, buf, flags) returns (fixed bin(31));
     dcl fd fixed bin(31);
-    dcl buf char(*);
+    dcl buf char(*) varying;
     dcl flags fixed bin(31);
     dcl s pointer;
     dcl n fixed bin(31);
@@ -405,21 +406,24 @@
 
  sock_recv: procedure (fd, buf, flags) returns (fixed bin(31));
     dcl fd fixed bin(31);
-    dcl buf char(*);
+    dcl buf char(*) varying;
     dcl flags fixed bin(31);
     dcl s pointer;
+    dcl tmp char(RECV_TEMP_SIZE);
     dcl n fixed bin(31);
     s = ws_lookup(fd);
     if s = null() then do; errno = EBADF; return (-1); end;
-    n = c_recv(s, buf, length(buf), flags);
-    if n < 0 then errno = wsa_to_errno(c_WSAGetLastError());
-    return (n);
+    n = c_recv(s, tmp, RECV_TEMP_SIZE, flags);
+    if n < 0 then do; errno = wsa_to_errno(c_WSAGetLastError()); return (-1); end;
+    if n = 0 then return (0);
+    buf = substr(tmp, 1, n);
+    return (1);
  end sock_recv;
 
  sock_sendto: procedure (fd, buf, flags, addr_buf)
     returns (fixed bin(31));
     dcl fd fixed bin(31);
-    dcl buf char(*);
+    dcl buf char(*) varying;
     dcl flags fixed bin(31);
     dcl addr_buf char(*);
     dcl s pointer;
@@ -432,20 +436,27 @@
     return (r);
  end sock_sendto;
 
- sock_recvfrom: procedure (fd, buf, flags, addr_buf, addrlen_ptr)
+ sock_recvfrom: procedure (fd, buf, flags, addr_buf)
     returns (fixed bin(31));
     dcl fd fixed bin(31);
-    dcl buf char(*);
+    dcl buf char(*) varying;
     dcl flags fixed bin(31);
-    dcl addr_buf char(*);
-    dcl addrlen_ptr pointer;
+    dcl addr_buf char(*) varying;
     dcl s pointer;
+    dcl tmp char(RECV_TEMP_SIZE);
+    dcl addr_tmp char(SOCKADDR_IN_SIZE);
+    dcl addrlen fixed bin(31);
     dcl r fixed bin(31);
     s = ws_lookup(fd);
     if s = null() then do; errno = EBADF; return (-1); end;
-    r = c_recvfrom(s, buf, length(buf), flags, addr_buf, addrlen_ptr);
-    if r < 0 then errno = wsa_to_errno(c_WSAGetLastError());
-    return (r);
+    addrlen = SOCKADDR_IN_SIZE;
+    r = c_recvfrom(s, tmp, RECV_TEMP_SIZE, flags, addr_tmp,
+        addr(addrlen));
+    if r < 0 then do; errno = wsa_to_errno(c_WSAGetLastError()); return (-1); end;
+    if r = 0 then return (0);
+    buf = substr(tmp, 1, r);
+    addr_buf = substr(addr_tmp, 1, addrlen);
+    return (1);
  end sock_recvfrom;
 
  /*===============================================================*/

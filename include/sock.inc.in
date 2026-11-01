@@ -94,19 +94,21 @@
   * (< length(buf)) is possible. */
  dcl sock_send entry (
      fixed bin(31),  /* connected socket file descriptor          */
-     char(*),        /* buffer holding data to send               */
+     char(*) varying,/* buffer holding data to send               */
      fixed bin(31)   /* send flags (e.g. MSG_DONTWAIT)            */
  )  returns (fixed bin(31)) external;
 
- /* Receive data on a connected socket.  Wraps libc recv(2).
-  * The PL/I length of buf is the maximum byte count.  Returns the
-  * number of bytes received (>= 0; 0 means peer closed), or -1 on
-  * failure (check errno); a short count is possible. */
- dcl sock_recv entry (
-     fixed bin(31),  /* connected socket file descriptor          */
-     char(*),        /* buffer to receive data into               */
-     fixed bin(31)   /* recv flags (e.g. MSG_DONTWAIT)            */
- )  returns (fixed bin(31)) external;
+/* Receive data on a connected socket.  Wraps libc recv(2).
+   * buf must be char(*) varying; on status 1 its live length
+   * (length(buf)) is the number of bytes received.  Returns status:
+   *   1 = data received (check length(buf) for the byte count),
+   *   0 = peer closed / EOF,
+   *  -1 = failure (check errno).  A short count is possible. */
+  dcl sock_recv entry (
+      fixed bin(31),  /* connected socket file descriptor          */
+      char(*) varying,/* buffer to receive data into (live len out)*/
+      fixed bin(31)   /* recv flags (e.g. MSG_DONTWAIT)            */
+  )  returns (fixed bin(31)) external;
 
  /* Send data to a specific peer address.  Wraps libc sendto(2).
   * The PL/I lengths of buf and addr_buf are the byte and sockaddr
@@ -114,22 +116,22 @@
   * (check errno). */
  dcl sock_sendto entry (
      fixed bin(31),  /* socket fd (may be unconnected for dgrams)  */
-     char(*),        /* buffer holding data to send               */
+     char(*) varying,/* buffer holding data to send               */
      fixed bin(31),  /* send flags (e.g. MSG_DONTWAIT)            */
      char(*)         /* buffer with sockaddr_in of the peer       */
  )  returns (fixed bin(31)) external;
 
- /* Receive data and store the sender's address.  Wraps libc recvfrom.
-  * The PL/I length of buf is the max byte count; the PL/I length of
-  * addr_buf is passed as the sockaddr length.  Returns bytes received
-  * (>= 0; 0 = peer closed), or -1 on failure (check errno). */
- dcl sock_recvfrom entry (
-     fixed bin(31),  /* receiving socket file descriptor          */
-     char(*),        /* buffer to receive data into               */
-     fixed bin(31),  /* recv flags (e.g. MSG_DONTWAIT)            */
-     char(*),        /* buffer to receive sender's sockaddr_in    */
-     pointer         /* ptr to fixed bin(31) receiving actual len */
- )  returns (fixed bin(31)) external;
+/* Receive data and store the sender's address.  Wraps libc recvfrom.
+  * buf and addr_buf must be char(*) varying; on status 1 length(buf)
+  * is the number of bytes received and length(addr_buf) is the actual
+  * sockaddr length.  Returns status: 1 = data received, 0 = peer
+  * closed / EOF, -1 = failure (check errno). */
+  dcl sock_recvfrom entry (
+      fixed bin(31),  /* receiving socket file descriptor          */
+      char(*) varying,/* buffer to receive data into (live len out)*/
+      fixed bin(31),  /* recv flags (e.g. MSG_DONTWAIT)            */
+      char(*) varying /* buffer receiving sender's sockaddr_in     */
+  )  returns (fixed bin(31)) external;
 
  /*--- Socket options ---*/
 

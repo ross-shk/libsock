@@ -20,9 +20,10 @@
      sock_poll_multi, sock_getaddrinfo, sock_freeaddrinfo, sock_errno);
 
  /*--- struct sizes ---*/
- %replace ADDRINFO_SIZE by 48;  /* struct addrinfo size, 64-bit */
- %replace POLLFD_BUF_SIZE by 8192;   /* NET_MAX_CLIENTS(1024) * 8 */
- %replace HOST_BUF_SIZE by 257;       /* NET_HOST_MAX(256) + 1 */
+  %replace ADDRINFO_SIZE by 48;  /* struct addrinfo size, 64-bit */
+  %replace POLLFD_BUF_SIZE by 8192;   /* NET_MAX_CLIENTS(1024) * 8 */
+  %replace HOST_BUF_SIZE by 257;       /* NET_HOST_MAX(256) + 1 */
+  %replace RECV_TEMP_SIZE by 8192;     /* temp buffer for recv/recvfrom */
  %include type_defs;
  %include errno;
  %include sock_common;
@@ -34,9 +35,9 @@
  *   events: int16  offset 4
  *   revents:int16  offset 6 */
  dcl 1 pollfd_t unaligned,
-    2 pfd_fd     fixed bin(31),
-    2 pfd_events fixed bin(15),
-    2 pfd_revents fixed bin(15);
+       2 pfd_fd     fixed bin(31),
+       2 pfd_events fixed bin(15),
+       2 pfd_revents fixed bin(15);
 
  /*--- raw libc bindings (direct FFI, no C bridge) ---*/
 
@@ -129,7 +130,7 @@
 
  dcl errno_ptr pointer;
  dcl 1 errno_view based(errno_ptr) unaligned,
-    2 errno_val fixed bin(31);
+       2 errno_val fixed bin(31);
 
  set_errno: procedure (v);
     dcl v fixed bin(31);
@@ -205,37 +206,52 @@
 
  sock_send: procedure (fd, buf, flags) returns (fixed bin(31));
     dcl fd fixed bin(31);
-    dcl buf char(*);
+    dcl buf char(*) varying;
     dcl flags fixed bin(31);
     return (c_send(fd, buf, length(buf), flags));
  end sock_send;
 
  sock_recv: procedure (fd, buf, flags) returns (fixed bin(31));
     dcl fd fixed bin(31);
-    dcl buf char(*);
+    dcl buf char(*) varying;
     dcl flags fixed bin(31);
-    return (c_recv(fd, buf, length(buf), flags));
+    dcl tmp char(RECV_TEMP_SIZE);
+    dcl n fixed bin(31);
+    n = c_recv(fd, tmp, RECV_TEMP_SIZE, flags);
+    if n < 0 then return (-1);
+    if n = 0 then return (0);
+    buf = substr(tmp, 1, n);
+    return (1);
  end sock_recv;
 
  sock_sendto: procedure (fd, buf, flags, addr_buf)
     returns (fixed bin(31));
     dcl fd fixed bin(31);
-    dcl buf char(*);
+    dcl buf char(*) varying;
     dcl flags fixed bin(31);
     dcl addr_buf char(*);
     return (c_sendto(fd, buf, length(buf), flags,
                      addr_buf, length(addr_buf)));
  end sock_sendto;
 
- sock_recvfrom: procedure (fd, buf, flags, addr_buf, addrlen_ptr)
+ sock_recvfrom: procedure (fd, buf, flags, addr_buf)
     returns (fixed bin(31));
     dcl fd fixed bin(31);
-    dcl buf char(*);
+    dcl buf char(*) varying;
     dcl flags fixed bin(31);
-    dcl addr_buf char(*);
-    dcl addrlen_ptr pointer;
-    return (c_recvfrom(fd, buf, length(buf), flags, addr_buf,
-        addrlen_ptr));
+    dcl addr_buf char(*) varying;
+    dcl tmp char(RECV_TEMP_SIZE);
+    dcl addr_tmp char(SOCKADDR_IN_SIZE);
+    dcl addrlen fixed bin(31);
+    dcl n fixed bin(31);
+    addrlen = SOCKADDR_IN_SIZE;
+    n = c_recvfrom(fd, tmp, RECV_TEMP_SIZE, flags, addr_tmp,
+        addr(addrlen));
+    if n < 0 then return (-1);
+    if n = 0 then return (0);
+    buf = substr(tmp, 1, n);
+    addr_buf = substr(addr_tmp, 1, addrlen);
+    return (1);
  end sock_recvfrom;
 
  /*===============================================================*/

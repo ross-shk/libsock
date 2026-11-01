@@ -26,9 +26,8 @@
      request       char(56),
      url           char(16),
      body          char(*) varying controlled,
-     chunk         char(64),
-     chunk_len     fixed bin(31),
-     requested_len fixed bin(31);
+     chunk         char(4096) varying,
+     (rc, chunk_len, requested_len) fixed bin(31);
 
    /* Resolve example.com:80 into a 16-byte sockaddr_in */
    if sock_getaddrinfo('example.com', 80, url) ^= 0 then do;
@@ -68,19 +67,21 @@
     * to the allocated maximum; we re-allocate a larger generation
     * whenever the next chunk would not fit. */
    do while ('1'b);
-     chunk_len = sock_recv(fd, chunk, 0);
-     if chunk_len < 0 then do;
-       put skip list('recv failed, errno=', sock_errno());
-       call sock_close(fd);
-       stop;
-     end;
-     if chunk_len = 0 then leave;  /* EOF: peer closed */
+      rc = sock_recv(fd, chunk, 0);
+      if rc < 0 then do;
+        put skip list('recv failed, errno=', sock_errno());
+        call sock_close(fd);
+        stop;
+      end;
+      if rc = 0 then leave;  /* EOF: peer closed */
 
-     call grow_buffer;
+      chunk_len = length(chunk);
 
-     /* Append chunk - PL/I sets the VARYING length automatically */
-     body = body || substr(chunk, 1, chunk_len);
-   end;
+      call grow_buffer;
+
+      /* Append chunk - PL/I sets the VARYING length automatically */
+      body = body || chunk;
+    end;
 
    put skip list('fetched', length(body), 'bytes from example.com');
    if length(body) > 0 then put skip list(body);

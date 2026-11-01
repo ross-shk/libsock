@@ -1,4 +1,4 @@
-/* server.pli - tiny TCP echo server using raw sock_* calls.
+ /* server.pli - tiny TCP echo server using raw sock_* calls.
  *
  * Module:    server
  * Purpose:   Bind to 127.0.0.1:9090, accept one connection, echo back
@@ -8,69 +8,75 @@
  *            ./server
  */
 
-usage: proc options(main);
-   %include sock;
+ usage: proc options(main);
+ %include sock;
 
    declare
      fd          fixed bin(31),
      cfd         fixed bin(31),
      addr        char(16),
-     buf         char(256),
-     (n, rc)     fixed bin(31);
+     buf         char(256) varying,
+     rc          fixed bin(31);
 
    /* Resolve 127.0.0.1:9090 into a 16-byte sockaddr_in. */
    if sock_getaddrinfo('127.0.0.1', 9090, addr) ^= 0 then do;
-      put skip list('server: getaddrinfo failed, errno=', sock_errno());
-      stop;
+     put skip list('server: getaddrinfo failed, errno=', sock_errno());
+     stop;
    end;
 
    fd = new_socket(AF_INET, SOCK_STREAM, 0);
    if fd < 0 then do;
-      put skip list('server: socket failed, errno=', sock_errno());
-      stop;
+     put skip list('server: socket failed, errno=', sock_errno());
+     stop;
    end;
 
    rc = sock_bind(fd, addr);
    if rc ^= 0 then do;
-      put skip list('server: bind failed, errno=', sock_errno());
-      call sock_close(fd);
-      stop;
+     put skip list('server: bind failed, errno=', sock_errno());
+     call sock_close(fd);
+     stop;
    end;
 
    rc = sock_listen(fd, 5);
    if rc ^= 0 then do;
-      put skip list('server: listen failed, errno=', sock_errno());
-      call sock_close(fd);
-      stop;
+     put skip list('server: listen failed, errno=', sock_errno());
+     call sock_close(fd);
+     stop;
    end;
 
    put skip list('server listening on 127.0.0.1:9090');
 
    cfd = sock_accept(fd);   /* blocks until a client connects */
    if cfd < 0 then do;
-      put skip list('server: accept failed, errno=', sock_errno());
-      call sock_close(fd);
-      stop;
+     put skip list('server: accept failed, errno=', sock_errno());
+     call sock_close(fd);
+     stop;
    end;
 
    put skip list('server: client connected');
 
-   n = sock_recv(cfd, buf, 0);
-   if n < 0 then do;
-      put skip list('server: recv failed, errno=', sock_errno());
-      call sock_close(cfd);
-      call sock_close(fd);
-      stop;
+   rc = sock_recv(cfd, buf, 0);
+   if rc < 0 then do;
+     put skip list('server: recv failed, errno=', sock_errno());
+     call sock_close(cfd);
+     call sock_close(fd);
+     stop;
+   end;
+   if rc = 0 then do;
+     put skip list('server: peer closed');
+     call sock_close(cfd);
+     call sock_close(fd);
+     stop;
    end;
 
-   put skip list('server: received', n, 'bytes:', substr(buf, 1, n));
+   put skip list('server: received', length(buf), 'bytes:', buf);
 
    rc = sock_send(cfd, buf, 0);   /* echo the bytes back */
    if rc < 0 then do;
-      put skip list('server: send failed, errno=', sock_errno());
+     put skip list('server: send failed, errno=', sock_errno());
    end;
 
    call sock_close(cfd);
    call sock_close(fd);
    put skip list('server: done');
-end;
+ end;

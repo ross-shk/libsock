@@ -10,12 +10,12 @@
  usage: proc options(main);
  %include sock;
 
-   declare 
+   declare
      fd               fixed bin(31),
      url              char(16),
      request          char(64),
-     response         char(4096),
-     (sent, n, total) fixed bin(31);
+     response         char(4096) varying,
+     (sent, rc, total) fixed bin(31);
 
    /* Resolve example.com:80 into a 16-byte sockaddr_in */
    if sock_getaddrinfo('example.com', 80, url) ^= 0 then do;
@@ -26,7 +26,7 @@
    /* Create a stream socket */
    fd = new_socket(AF_INET, SOCK_STREAM, 0);
    if fd < 0 then do;
-    put skip list('socket failed, errno=', sock_errno());
+     put skip list('socket failed, errno=', sock_errno());
      stop;
    end;
 
@@ -44,21 +44,22 @@
    sent = sock_send(fd, request, 0);
    put skip list('sent', sent, 'request bytes');
 
-   /* Read the response in chunks until the peer closes */
-   total = 0;
-   do while ('1'b);
-     n = sock_recv(fd, response, 0);
+    /* Read the response in chunks until the peer closes.
+       sock_recv returns status; length(response) is the byte count. */
+    total = 0;
+    do while ('1'b);
+      rc = sock_recv(fd, response, 0);
 
-     if n < 0 then do;
-       put skip list('recv failed, errno=', sock_errno());
-       stop;
-     end;
-     if n = 0 then leave;
+      if rc < 0 then do;
+        put skip list('recv failed, errno=', sock_errno());
+        call sock_close(fd);
+        stop;
+      end;
+      if rc = 0 then leave;
 
-     total = total + n;
-
-     put skip list(substr(response, 1, n));
-   end;
+      total = total + length(response);
+      put skip list(response);
+    end;
 
    /* Close and report. */
    call sock_close(fd);
