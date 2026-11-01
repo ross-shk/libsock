@@ -1,0 +1,59 @@
+/* client.pli - tiny TCP client using raw sock_* calls.
+ *
+ * Module:    client
+ * Purpose:   Connect to 127.0.0.1:9090, send a message, read the echo,
+ *            then exit.
+ *
+ * Usage:     pli client.pli -I include -L lib -lsock -o client
+ *            ./client
+ */
+
+usage: proc options(main);
+   %include sock;
+
+   declare
+     fd          fixed bin(31),
+     addr        char(16),
+     buf         char(256),
+     msg         char(64),
+     (n, rc)     fixed bin(31);
+
+   /* Resolve 127.0.0.1:9090 into a 16-byte sockaddr_in. */
+   if sock_getaddrinfo('127.0.0.1', 9090, addr) ^= 0 then do;
+      put skip list('client: getaddrinfo failed, errno=', sock_errno());
+      stop;
+   end;
+
+   fd = new_socket(AF_INET, SOCK_STREAM, 0);
+   if fd < 0 then do;
+      put skip list('client: socket failed, errno=', sock_errno());
+      stop;
+   end;
+
+   rc = sock_connect(fd, addr);
+   if rc ^= 0 then do;
+      put skip list('client: connect failed, errno=', sock_errno());
+      call sock_close(fd);
+      stop;
+   end;
+
+   put skip list('client: connected to 127.0.0.1:9090');
+
+   msg = 'Hello, server';
+   rc = sock_send(fd, msg, 0);
+   put skip list('client: sent', rc, 'bytes');
+
+   n = sock_recv(fd, buf, 0);
+   if n < 0 then do;
+      put skip list('client: recv failed, errno=', sock_errno());
+      call sock_close(fd);
+      stop;
+   end;
+   if n = 0 then do;
+      put skip list('client: peer closed');
+   end;
+   put skip list('client: received echo:', substr(buf, 1, n));
+
+   call sock_close(fd);
+   put skip list('client: done');
+end;

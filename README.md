@@ -23,12 +23,14 @@ and then install (optionally):
 cmake --install build
 ```
 
-## Usage Example
+## Usage Examples
 
-Use it similarly to the POSIX socket library, see the full example in [examples/simple_usage.pli](./examples/simple_usage.pli), compile with:
+### Basic Usage
+
+A basic usage example that resolves [example.com](http://example.com) and reads its contents. Use it similarly to the POSIX socket library, see the full example in [examples/simple_usage.pli](./examples/simple_usage.pli), compile with:
 
 ```bash
-pli examples/simple_usage.pli -lsock -o simple_usage # simple_usage.exe on Windows
+pli examples/simple_usage.pli -lsock -o simple_usage   # simple_usage.exe on Windows
 ```
 
 Declare variables holding the socket file descriptor, the URL, request and response buffers, and also byte counts:
@@ -99,6 +101,69 @@ Close the socket:
 ```c
 call sock_close(fd);
 ```
+
+### Client-Server
+
+A basic TCP echo server and client pair using raw `sock_*` calls. The server binds to `127.0.0.1:9090`, accepts a single connection, reads a message, and echoes it back before exiting; the client connects to `127.0.0.1:9090`, sends a message, reads the echo, and exits. See the full sources in [examples/server.pli](./examples/server.pli) and [examples/client.pli](./examples/client.pli), compile each with:
+
+```bash
+pli examples/server.pli -lsock -o server   # server.exe on Windows
+pli examples/client.pli -lsock -o client   # client.exe on Windows
+```
+
+Resolve `127.0.0.1:9090` into a 16-byte `sockaddr_in` with error handling:
+
+```c
+if sock_getaddrinfo('127.0.0.1', 9090, addr) ^= 0 then do;
+  put skip list('getaddrinfo failed, errno=', sock_errno());
+  stop;
+end;
+```
+
+Create a stream socket:
+
+```c
+fd = new_socket(AF_INET, SOCK_STREAM, 0);
+```
+
+Server - bind, listen, accept, echo:
+
+```c
+rc = sock_bind(fd, addr);
+rc = sock_listen(fd, 5);
+
+cfd = sock_accept(fd);   /* blocks until a client connects */
+n = sock_recv(cfd, buf, 0);
+
+rc = sock_send(cfd, buf, 0);   /* echo the bytes back */
+```
+
+Client - connect, send, read echo:
+
+```c
+rc = sock_connect(fd, addr);
+
+msg = 'Hello, server';
+rc = sock_send(fd, msg, 0);
+
+n = sock_recv(fd, buf, 0);
+```
+
+Close the sockets:
+
+```c
+call sock_close(cfd);
+call sock_close(fd);
+```
+
+Run the server in one terminal and the client in another:
+
+```bash
+./server      # server listening on 127.0.0.1:9090
+./client      # client: received echo: Hello, server
+```
+
+### Dynamic Response Buffer
 
 ## Architecture
 
