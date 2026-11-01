@@ -173,14 +173,44 @@ Run the server in one terminal and the client in another:
 
 ## Layout
 
-| Path | Contents |
-| --- | --- |
-| `source/posix/sock.pli` | PL/I wrappers (`sock_*`) over libc (Linux/macOS) |
-| `source/windows/sock.pli` | PL/I wrappers (`sock_*`) over Winsock2 (Windows) |
-| `source/sock_common.inc` | shared struct layouts (`addrinfo_t`, `sockaddr_hdr`) |
-| `include/sock.inc` | `sock_*` interface declarations (identical on both platforms) |
-| `include/errno.inc` | POSIX errno constants (`E*` + `EAI_*`) |
-| `include/type_defs.inc` | socket/type constants (`AF_*`, `SOCK_*`, `SOL_SOCKET`, `NET_*`, sizes) |
+```text
+.
+├── CMakeLists.txt        # project build definition
+├── LICENSE               # MIT license
+├── README.md             # this file
+├── cmake/                # CMake modules and pkg-config template
+│   ├── GenDistInc.cmake
+│   ├── cmake_uninstall.cmake.in
+│   └── libsock.pc.in
+├── examples/             # PL/I example programs
+│   ├── basic_usage.pli   # connect to example.com and read its contents
+│   ├── client.pli        # TCP echo client
+│   ├── dynamic_buff.pli  # dynamic receive buffer example
+│   └── server.pli        # TCP echo server
+├── include/              # public PL/I include files
+│   ├── darwin/           # macOS-specific defines
+│   │   ├── errno.inc     # macOS errno constants
+│   │   └── type_defs.inc # macOS socket/type/size constants
+│   ├── errno.inc         # POSIX errno constants (E*, EAI_*)
+│   ├── linux/            # Linux-specific defines
+│   │   ├── errno.inc     # Linux errno constants
+│   │   └── type_defs.inc # Linux socket/type/size constants
+│   ├── sock.inc          # sock_* interface declarations (both platforms)
+│   ├── sock.inc.in       # templated sock.inc
+│   ├── type_defs.inc     # shared socket/type constants (AF_*, SOCK_*, ...)
+│   └── win/              # Windows-specific defines
+│       ├── errno.inc     # Winsock errno translated to POSIX
+│       └── type_defs.inc # Windows socket/type/size constants
+├── lib/                  # built artifacts
+│   └── libsock.a         # compiled static library
+├── source/               # PL/I source
+│   ├── posix/            # POSIX (libc) implementation
+│   │   └── sock.pli      # sock_* wrappers over libc (Linux/macOS)
+│   ├── sock_common.inc   # shared struct layouts (addrinfo_t, sockaddr_hdr)
+│   └── win/              # Windows (Winsock2) implementation
+│       └── sock.pli      # sock_* wrappers over Winsock2 (Windows)
+└── zapp.yaml             # Zapp project manifest
+```
 
 ## CMake options
 
