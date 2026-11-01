@@ -147,7 +147,7 @@ endif()
 
 # ------------------------------------------------------------ include/sock.inc (cmake-formed)
 # Self-contained external interface: sock_* declarations with the
-# c_bridge/type_defs/errno contents inlined and %include lines stripped,
+# type_defs/errno contents inlined and %include lines stripped,
 # so the include/sock.inc dropped into the project tree needs no sibling
 # include files and can be installed to /usr/include standalone.
 set(LIBSOCK_INC_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/include/sock.inc.in")

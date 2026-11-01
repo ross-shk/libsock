@@ -1,4 +1,4 @@
-/* sock.inc - libnet socket compatibility layer interface.
+/* sock.inc.in - CMake template for the libnet socket compatibility layer interface.
  *
  * Module:  sock
  * Purpose: Declare the sock_* procedures (implemented in
@@ -12,8 +12,13 @@
  * each sock_* procedure calls Winsock2 directly via external(), with
  * a private fd->SOCKET table held in source/windows/sock.pli.
  *
- * This include pulls in type_defs + errno so callers
- * (e.g. net.pli) get errno constants and the sock_errno procedure.
+ * This is the CMake input template. It references type_defs and errno
+ * via %include directives so callers (e.g. net.pli) get errno constants
+ * and the sock_errno procedure.  At CMake configure time, GenDistInc.cmake
+ * concatenates this file with the selected platform's include/<platform>/
+ * type_defs.inc and errno.inc, strips the %include lines, and writes the
+ * self-contained result to include/sock.inc.  Edit this file, not
+ * include/sock.inc (which is regenerated at configure time).
  */
 
  %include type_defs;
