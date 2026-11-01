@@ -16,8 +16,6 @@ project(libsock LANGUAGES NONE VERSION 0.1.0)
 
 include(GNUInstallDirs)
 
-option(LIBSOCK_ENABLE_PLI "Build the compiled PL/I module when the PL/I compiler is found" ON)
-
 set(LIBSOCK_PLIFLAGS "" CACHE STRING "Extra flags forwarded to the PL/I compiler")
 set(PLI_LLVM "$ENV{PLI_LLVM}" CACHE PATH "pli-llvm install prefix (bin/pli)")
 
@@ -42,7 +40,7 @@ find_program(PLI_EXECUTABLE NAMES pli
   DOC "pli-llvm compiler driver")
 mark_as_advanced(PLI_EXECUTABLE)
 
-if(LIBSOCK_ENABLE_PLI AND PLI_EXECUTABLE)
+if(PLI_EXECUTABLE)
   set(LIBSOCK_HAVE_PLI TRUE)
 else()
   set(LIBSOCK_HAVE_PLI FALSE)

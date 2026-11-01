@@ -214,7 +214,5 @@ Run the server in one terminal and the client in another:
 
 ## CMake options
 
-- `LIBSOCK_ENABLE_PLI` (default ON) — build the compiled PL/I module when the
-  PL/I compiler is found
-- `PLI_LLVM` / `PLI_EXECUTABLE` — locate the pli-llvm compiler
+- `PLI_LLVM` / `PLI_EXECUTABLE` — locate the PL/I compiler
 - `LIBSOCK_PLIFLAGS` — extra flags forwarded to the PL/I compiler
