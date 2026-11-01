@@ -80,7 +80,7 @@ endif()
 if(APPLE)
   set(LIBSOCK_PLATFORM darwin)
 elseif(WIN32)
-  set(LIBSOCK_PLATFORM windows)
+  set(LIBSOCK_PLATFORM win)
 else()
   set(LIBSOCK_PLATFORM linux)
 endif()
@@ -89,8 +89,8 @@ set(LIBSOCK_PLATFORM "${LIBSOCK_PLATFORM}" CACHE STRING "Target platform for err
 # Select the PL/I socket variant by platform: posix for darwin/linux,
 # windows for windows.  Each variant calls its platform's socket calls
 # directly (model B: no C bridge compiled).
-if(LIBSOCK_PLATFORM STREQUAL "windows")
-  set(LIBSOCK_PLI_SUBDIR windows)
+if(LIBSOCK_PLATFORM STREQUAL "win")
+  set(LIBSOCK_PLI_SUBDIR win)
 else()
   set(LIBSOCK_PLI_SUBDIR posix)
 endif()
@@ -168,9 +168,11 @@ add_custom_command(
 add_custom_target(libsock_inc ALL DEPENDS "${LIBSOCK_INC}")
 
 # ---------------------------------------------------------------- install
-install(TARGETS sock EXPORT libsock-targets
-  ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+if(LIBSOCK_HAVE_PLI)
+  install(TARGETS sock EXPORT libsock-targets
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+endif()
 install(FILES
   "${CMAKE_CURRENT_SOURCE_DIR}/include/darwin/type_defs.inc"
   "${CMAKE_CURRENT_SOURCE_DIR}/include/linux/type_defs.inc"
