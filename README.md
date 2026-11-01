@@ -17,7 +17,7 @@ cmake -S . -B build
 cmake --build build
 ```
 
-and then install:
+and then install (optionally):
 
 ```bash
 cmake --install build
