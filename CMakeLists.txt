@@ -71,8 +71,8 @@ endif()
 
 # ------------------------------------------------ platform constant selection
 # include/errno.inc and include/type_defs.inc are stubs; the real platform
-# constants live in platform/errno-<platform>.inc and
-# platform/type_defs-<platform>.inc. CMake copies the selected variant into
+# constants live in include/<platform>/errno.inc and
+# include/<platform>/type_defs.inc. CMake copies the selected variant into
 # ${CMAKE_CURRENT_BINARY_DIR}/include/ at configure time (file(COPY), no
 # build custom commands), so %include errno / %include type_defs in
 # source/${LIBSOCK_PLI_SUBDIR}/sock.pli resolve to the platform copy via
@@ -95,8 +95,8 @@ else()
   set(LIBSOCK_PLI_SUBDIR posix)
 endif()
 set(LIBSOCK_PLI_SUBDIR "${LIBSOCK_PLI_SUBDIR}" CACHE STRING "PL/I socket variant subdirectory (posix/windows)")
-set(LIBSOCK_TYPE_DEFS_INC "${CMAKE_CURRENT_SOURCE_DIR}/platform/type_defs-${LIBSOCK_PLATFORM}.inc")
-set(LIBSOCK_ERRNO_INC     "${CMAKE_CURRENT_SOURCE_DIR}/platform/errno-${LIBSOCK_PLATFORM}.inc")
+set(LIBSOCK_TYPE_DEFS_INC "${CMAKE_CURRENT_SOURCE_DIR}/include/${LIBSOCK_PLATFORM}/type_defs.inc")
+set(LIBSOCK_ERRNO_INC     "${CMAKE_CURRENT_SOURCE_DIR}/include/${LIBSOCK_PLATFORM}/errno.inc")
 if(NOT EXISTS "${LIBSOCK_TYPE_DEFS_INC}")
   message(FATAL_ERROR "Platform type_defs file not found: ${LIBSOCK_TYPE_DEFS_INC}")
 endif()
@@ -172,12 +172,12 @@ install(TARGETS sock EXPORT libsock-targets
   ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
   LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 install(FILES
-  "${CMAKE_CURRENT_SOURCE_DIR}/platform/type_defs-darwin.inc"
-  "${CMAKE_CURRENT_SOURCE_DIR}/platform/type_defs-linux.inc"
-  "${CMAKE_CURRENT_SOURCE_DIR}/platform/type_defs-windows.inc"
-  "${CMAKE_CURRENT_SOURCE_DIR}/platform/errno-darwin.inc"
-  "${CMAKE_CURRENT_SOURCE_DIR}/platform/errno-linux.inc"
-  "${CMAKE_CURRENT_SOURCE_DIR}/platform/errno-windows.inc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/darwin/type_defs.inc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/linux/type_defs.inc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/win/type_defs.inc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/darwin/errno.inc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/linux/errno.inc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/win/errno.inc"
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 install(FILES "${LIBSOCK_INC}" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 
