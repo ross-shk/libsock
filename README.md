@@ -27,10 +27,10 @@ cmake --install build
 
 ### Basic Usage
 
-A basic usage example that resolves [example.com](http://example.com) and reads its contents. Use it similarly to the POSIX socket library, see the full example in [examples/simple_usage.pli](./examples/simple_usage.pli), compile with:
+A basic usage example that resolves [example.com](http://example.com) and reads its contents. Use it similarly to the POSIX socket library, see the full example in [examples/basic_usage.pli](./examples/basic_usage.pli), compile with:
 
 ```bash
-pli examples/simple_usage.pli -lsock -o simple_usage   # simple_usage.exe on Windows
+pli examples/basic_usage.pli -lsock -o basic_usage   # basic_usage.exe on Windows
 ```
 
 Declare variables holding the socket file descriptor, the URL, request and response buffers, and also byte counts:

@@ -1,10 +1,10 @@
- /* simple_usage.pli - fetch using raw sock_* calls. 
+ /* basic_usage.pli - fetch using raw sock_* calls. 
   * 
-  * Module:    simple_usage 
+  * Module:    basic_usage 
   * Purpose:   Connect to example.com:80, send GET /, 
   *            read the reply with sock_recv. 
-  * Usage:     pli examples/simple_usage.pli -lsock -o simple_usage  
-  *            ./simple_usage
+  * Usage:     pli examples/basic_usage.pli -lsock -o basic_usage  
+  *            ./basic_usage
   */
 
  usage: proc options(main);
