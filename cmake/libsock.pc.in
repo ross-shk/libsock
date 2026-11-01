@@ -3,7 +3,7 @@ libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
 includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
 
 Name: libsock
-Description: PL/I socket compatibility layer (thin C bridge + compiled PL/I module)
+Description: PL/I socket compatibility layer (compiled PL/I module)
 Version: @PROJECT_VERSION@
 Libs: -L${libdir} -lsock
 Libs.private: @LIBSOCK_PC_PRIVATE@

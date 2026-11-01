@@ -11,8 +11,8 @@
 # calling libc (POSIX) or Winsock2 (Windows) directly via external() FFI.
 # The library target only exists when the PL/I compiler is found.
 # Point CMake at the PL/I compiler with -DPLI_EXECUTABLE=... or -DPLI_LLVM=...
-cmake_minimum_required(VERSION 3.16)
-project(libsock LANGUAGES C VERSION 0.1.0)
+cmake_minimum_required(VERSION 3.25)
+project(libsock LANGUAGES NONE VERSION 0.1.0)
 
 include(GNUInstallDirs)
 
@@ -30,15 +30,15 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/lib)
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lib"
      "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
-# ---------------------------------------------------------------- C library
-# Zero C dependency: the socket procedures are implemented entirely in PL/I
-# calling libc (POSIX) or Winsock2 (Windows) directly via external() FFI.
-# ws2_32 is linked on Windows so the direct Winsock2 calls resolve.
+# ---------------------------------------------------------------- PL/I build
+# Zero C dependency: the socket procedures are implemented entirely in PL/I,
+# calling libc (POSIX) directly via external() FFI.
 
 
 # ------------------------------------------------------- PL/I module (opt)
 find_program(PLI_EXECUTABLE NAMES pli
   HINTS "${PLI_LLVM}/bin" /usr/local/bin /opt/pli-llvm/bin
+  REQUIRED
   DOC "pli-llvm compiler driver")
 mark_as_advanced(PLI_EXECUTABLE)
 
@@ -48,31 +48,11 @@ else()
   set(LIBSOCK_HAVE_PLI FALSE)
 endif()
 
-# ---------------------------------------------------------------- C library
-# Zero C dependency: the socket procedures are implemented entirely in PL/I
-# calling libc (POSIX) or Winsock2 (Windows) directly via external() FFI.
-# ws2_32 is linked on Windows so the direct Winsock2 calls resolve.
-# The library target only exists when the PL/I compiler is found,
-# since the socket procedures are implemented entirely in PL/I.
-if(LIBSOCK_HAVE_PLI)
-  if(WIN32)
-    add_library(sock STATIC source/win/sock.pli)
-    target_link_libraries(sock PUBLIC ws2_32)
-  else()
-    add_library(sock STATIC source/posix/sock.pli)
-  endif()
-  add_library(libsock::sock ALIAS sock)
-  set_target_properties(sock PROPERTIES LINKER_LANGUAGE C)
-  set_target_properties(sock PROPERTIES
-    C_STANDARD 11
-    C_STANDARD_REQUIRED ON
-    OUTPUT_NAME sock)
-  foreach(_cfg IN ITEMS DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
-    set_property(TARGET sock PROPERTY ARCHIVE_OUTPUT_DIRECTORY_${_cfg} "${CMAKE_CURRENT_SOURCE_DIR}/lib")
-    set_property(TARGET sock PROPERTY LIBRARY_OUTPUT_DIRECTORY_${_cfg} "${CMAKE_CURRENT_SOURCE_DIR}/lib")
-    set_property(TARGET sock PROPERTY RUNTIME_OUTPUT_DIRECTORY_${_cfg} "${CMAKE_CURRENT_SOURCE_DIR}/lib")
-  endforeach()
-endif()
+# ---------------------------------------------------------------- PL/I library
+# Zero C dependency: the socket procedures are implemented entirely in PL/I,
+# calling libc (POSIX) directly via external() FFI.
+# The PL/I object and archive are built below, once LIBSOCK_PLI_SUBDIR and
+# LIBSOCK_PLI_INCLUDES are resolved.
 
 # ------------------------------------------------ platform constant selection
 # include/errno.inc and include/type_defs.inc are stubs; the real platform
@@ -123,31 +103,43 @@ set(LIBSOCK_PLI_INCLUDES
   "${CMAKE_CURRENT_BINARY_DIR}/include/errno.inc")
 
 if(LIBSOCK_HAVE_PLI)
-  # Compile the PL/I module; the object joins the static lib alongside
-  # the C bridge object (on Windows) or stands alone (on POSIX).
-  set(LIBSOCK_PLI_OBJ_SOCK "${CMAKE_CURRENT_BINARY_DIR}/sock${CMAKE_C_OUTPUT_EXTENSION}")
+  find_program(PLI_AR NAMES ar REQUIRED)
+  set(LIBSOCK_PLI_SOCK "${CMAKE_CURRENT_SOURCE_DIR}/source/${LIBSOCK_PLI_SUBDIR}/sock.pli")
+  set(LIBSOCK_SOCK_A "${CMAKE_CURRENT_SOURCE_DIR}/lib/libsock${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(LIBSOCK_PLI_OBJ "${CMAKE_CURRENT_BINARY_DIR}/sock.o")
   if(LIBSOCK_PLIFLAGS)
     set(_pli_flags ${LIBSOCK_PLIFLAGS})
   endif()
   add_custom_command(
-    OUTPUT "${LIBSOCK_PLI_OBJ_SOCK}"
+    OUTPUT "${LIBSOCK_PLI_OBJ}"
     COMMAND "${PLI_EXECUTABLE}" ${_pli_flags}
-      -c "${CMAKE_CURRENT_SOURCE_DIR}/source/${LIBSOCK_PLI_SUBDIR}/sock.pli"
+      -c "${LIBSOCK_PLI_SOCK}"
       -I "${CMAKE_CURRENT_BINARY_DIR}/include"
       -I "${CMAKE_CURRENT_SOURCE_DIR}/include"
       -I "${CMAKE_CURRENT_SOURCE_DIR}/source"
-      -o "${LIBSOCK_PLI_OBJ_SOCK}"
+      -o "${LIBSOCK_PLI_OBJ}"
     DEPENDS
-      "${CMAKE_CURRENT_SOURCE_DIR}/source/${LIBSOCK_PLI_SUBDIR}/sock.pli"
+      "${LIBSOCK_PLI_SOCK}"
       "${CMAKE_CURRENT_SOURCE_DIR}/source/sock_common.inc"
       ${LIBSOCK_PLI_INCLUDES}
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     COMMENT "PL/I compiler: compiling source/${LIBSOCK_PLI_SUBDIR}/sock.pli"
     VERBATIM)
-  target_sources(sock PRIVATE "${LIBSOCK_PLI_OBJ_SOCK}")
+  add_custom_command(
+    OUTPUT "${LIBSOCK_SOCK_A}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/lib"
+    COMMAND "${PLI_AR}" "rcs" "${LIBSOCK_SOCK_A}" "${LIBSOCK_PLI_OBJ}"
+    DEPENDS "${LIBSOCK_PLI_OBJ}"
+    COMMENT "Archiving PL/I object into libsock.a"
+    VERBATIM)
+  add_custom_target(sock ALL DEPENDS "${LIBSOCK_SOCK_A}")
+  add_library(libsock::sock INTERFACE IMPORTED)
+  set_target_properties(libsock::sock PROPERTIES
+    INTERFACE_LINK_LIBRARIES "${LIBSOCK_SOCK_A}"
+    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/include")
   message(STATUS "libsock: PL/I compiler found (${PLI_EXECUTABLE}), PL/I module enabled")
 else()
-  message(STATUS "libsock: PL/I compiler not found, building C bridge only (PL/I module skipped)")
+  message(STATUS "libsock: PL/I module skipped")
 endif()
 
 # ------------------------------------------------------------ include/sock.inc (cmake-formed)
@@ -174,9 +166,7 @@ add_custom_target(libsock_inc ALL DEPENDS "${LIBSOCK_INC}")
 
 # ---------------------------------------------------------------- install
 if(LIBSOCK_HAVE_PLI)
-  install(TARGETS sock EXPORT libsock-targets
-    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+  install(FILES "${LIBSOCK_SOCK_A}" DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 endif()
 install(FILES
   "${CMAKE_CURRENT_SOURCE_DIR}/include/darwin/type_defs.inc"
