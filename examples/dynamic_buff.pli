@@ -20,15 +20,15 @@
  dynamic_buff: procedure options (main);
  %include sock;
 
-   dcl url           char(16);
-   dcl fd            fixed bin(31);
-   dcl sent          fixed bin(31);
-   dcl req           char(56);
-   dcl body          char(*) varying controlled;
-   dcl spare         char(*) varying controlled;
-   dcl chunk         char(NET_BUF_CAP);
-   dcl chunk_len     fixed bin(31);
-   dcl requested_len fixed bin(31);
+   declare
+     fd            fixed bin(31),
+     sent          fixed bin(31),
+     request       char(56),
+     url           char(16),
+     (body, spare) char(*) varying controlled,
+     chunk         char(64),
+     chunk_len     fixed bin(31),
+     requested_len fixed bin(31);
 
    /* Resolve example.com:80 into a 16-byte sockaddr_in */
    if sock_getaddrinfo('example.com', 80, url) ^= 0 then do;
@@ -51,33 +51,35 @@
    end;
 
    /* HTTP/1.0 GET request with Connection: close */
-   req = 'GET / HTTP/1.0' || '0D0A'x || 'Host: example.com' || '0D0A'x
-      || 'Connection: close' || '0D0A'x || '0D0A'x;
-   sent = sock_send(fd, req, 0);
+   request = 'GET / HTTP/1.0'    || '0D0A'x 
+          || 'Host: example.com' || '0D0A'x 
+          || 'Connection: close' || '0D0A'x || '0D0A'x;
+   sent = sock_send(fd, request, 0);
    put skip list('sent', sent, 'request bytes');
 
-   /* Small initial allocation to force buffer growth */
-   requested_len = 64;
+   /* Tiny initial allocation to force buffer growth on the first read.
+    * Chunk (64) exceeds body (16), so grow_buffer runs right away. */
+   requested_len = 16;
    allocate body (requested_len) character varying;
 
-   /* Read in chunks, growing the CONTROLLED string as needed.
+   /* Read in small chunks, growing the CONTROLLED string as needed.
     * LENGTH(body) is FIXED BINARY: PL/I maintains the live length of
     * a VARYING string. Concatenation (||) grows it automatically up
     * to the allocated maximum; we re-allocate a larger generation
     * whenever the next chunk would not fit. */
    do while ('1'b);
      chunk_len = sock_recv(fd, chunk, 0);
-      if chunk_len < 0 then do;
-        put skip list('recv failed, errno=', sock_errno());
-        call sock_close(fd);
-        stop;
-      end;
-      if chunk_len = 0 then leave;  /* EOF: peer closed */
+     if chunk_len < 0 then do;
+       put skip list('recv failed, errno=', sock_errno());
+       call sock_close(fd);
+       stop;
+     end;
+     if chunk_len = 0 then leave;  /* EOF: peer closed */
 
-      call grow_buffer;
+     call grow_buffer;
 
-      /* Append chunk - PL/I sets the VARYING length automatically */
-      body = body || substr(chunk, 1, chunk_len);
+     /* Append chunk - PL/I sets the VARYING length automatically */
+     body = body || substr(chunk, 1, chunk_len);
    end;
 
    put skip list('fetched', length(body), 'bytes from example.com');
