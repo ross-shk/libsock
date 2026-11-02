@@ -103,7 +103,13 @@ set(LIBSOCK_PLI_INCLUDES
 if(LIBSOCK_HAVE_PLI)
   find_program(PLI_AR NAMES ar REQUIRED)
   set(LIBSOCK_PLI_SOCK "${CMAKE_CURRENT_SOURCE_DIR}/source/${LIBSOCK_PLI_SUBDIR}/sock.pli")
-  set(LIBSOCK_SOCK_A "${CMAKE_CURRENT_SOURCE_DIR}/lib/libsock${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  # Windows linkers resolve -lsock to sock.lib (not libsock.lib), so name the
+  # archive to match the documented flag; POSIX keeps the standard libsock.a.
+  if(WIN32)
+    set(LIBSOCK_SOCK_A "${CMAKE_CURRENT_SOURCE_DIR}/lib/sock${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  else()
+    set(LIBSOCK_SOCK_A "${CMAKE_CURRENT_SOURCE_DIR}/lib/libsock${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  endif()
   set(LIBSOCK_PLI_OBJ "${CMAKE_CURRENT_BINARY_DIR}/sock.o")
   if(LIBSOCK_PLIFLAGS)
     set(_pli_flags ${LIBSOCK_PLIFLAGS})
@@ -126,9 +132,12 @@ if(LIBSOCK_HAVE_PLI)
   add_custom_command(
     OUTPUT "${LIBSOCK_SOCK_A}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/lib"
+    # Recreate the archive so an older member (e.g. sock.obj) cannot linger and
+    # shadow the freshly compiled object.
+    COMMAND "${CMAKE_COMMAND}" -E rm -f "${LIBSOCK_SOCK_A}"
     COMMAND "${PLI_AR}" "rcs" "${LIBSOCK_SOCK_A}" "${LIBSOCK_PLI_OBJ}"
     DEPENDS "${LIBSOCK_PLI_OBJ}"
-    COMMENT "Archiving PL/I object into libsock.a"
+    COMMENT "Archiving PL/I object into ${LIBSOCK_SOCK_A}"
     VERBATIM)
   add_custom_target(sock ALL DEPENDS "${LIBSOCK_SOCK_A}")
   add_library(libsock::sock INTERFACE IMPORTED)
