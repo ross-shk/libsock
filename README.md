@@ -82,7 +82,7 @@ Read the response in chunks until the peer closes:
 
 ```c
 total = 0;
-do while ('1'b);
+do forever;
   n = sock_recv(fd, response, 0);
 
   if n < 0 then do;
