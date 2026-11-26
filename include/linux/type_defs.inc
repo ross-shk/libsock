@@ -59,8 +59,6 @@
   * sin_len byte. */
  %replace SOCKADDR_HAS_SIN_LEN by 0;
  /* Linux struct addrinfo orders ai_addr before ai_canonname. */
- %declare addrinfo_addr_before_canon value(1);
- %activate addrinfo_addr_before_canon;
  %replace LINGER_SIZE       by  8;   /* sizeof(struct linger)       */
  %replace TIMEVAL_SIZE      by 16;   /* sizeof(struct timeval)      */
 

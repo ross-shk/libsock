@@ -120,11 +120,13 @@ if(LIBSOCK_HAVE_PLI)
       -c "${LIBSOCK_PLI_SOCK}"
       -I "${CMAKE_CURRENT_BINARY_DIR}/include"
       -I "${CMAKE_CURRENT_SOURCE_DIR}/include"
+      -I "${CMAKE_CURRENT_SOURCE_DIR}/source/${LIBSOCK_PLATFORM}"
       -I "${CMAKE_CURRENT_SOURCE_DIR}/source"
       -o "${LIBSOCK_PLI_OBJ}"
     DEPENDS
       "${LIBSOCK_PLI_SOCK}"
       "${CMAKE_CURRENT_SOURCE_DIR}/source/sock_common.inc"
+      "${CMAKE_CURRENT_SOURCE_DIR}/source/${LIBSOCK_PLATFORM}/addrinfo_view.inc"
       ${LIBSOCK_PLI_INCLUDES}
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     COMMENT "PL/I compiler: compiling source/${LIBSOCK_PLI_SUBDIR}/sock.pli"

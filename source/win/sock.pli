@@ -702,15 +702,7 @@
     dcl i fixed bin(31);
     dcl n fixed bin(31);
     dcl p pointer;
-    dcl 1 res_view based(res_ptr) unaligned,
-        2 rai_flags   fixed bin(31),
-        2 rai_family  fixed bin(31),
-        2 rai_socktype fixed bin(31),
-        2 rai_protocol fixed bin(31),
-        2 rai_addrlen fixed bin(63),
-        2 rai_canonname pointer,
-        2 rai_addr    pointer,
-        2 rai_next    pointer;
+ %include addrinfo_view;
     dcl src_buf char(SOCKADDR_IN_SIZE) based(p);
     dcl port_hi fixed bin(31);
     dcl port_lo fixed bin(31);
