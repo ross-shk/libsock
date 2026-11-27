@@ -1,4 +1,4 @@
-# libsock — PL/I socket compatibility layer
+# libsock — Cross-platform socket-level networking library for PL/I
 
 A thin socket compatibility layer that provides socket bindings for PL/I programs.
 
